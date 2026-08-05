@@ -661,6 +661,29 @@
             font-family: 'Share Tech Mono', monospace;
         }
 
+        .pending-summary {
+            color: var(--terminal-fg);
+            font-size: 0.82rem;
+            line-height: 1.4;
+            margin-bottom: 10px;
+            white-space: pre-wrap;
+        }
+
+        .pending-option-detail {
+            border: 1px solid var(--border-color);
+            color: var(--terminal-fg);
+            font-size: 0.75rem;
+            line-height: 1.35;
+            margin: -4px 0 8px;
+            padding: 6px;
+        }
+
+        .pending-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
         .pending-questions button {
             background: var(--accent-amber);
             color: #000;
@@ -668,6 +691,12 @@
             padding: 6px 12px;
             cursor: pointer;
             font-family: 'Share Tech Mono', monospace;
+        }
+
+        .pending-questions button.secondary {
+            background: transparent;
+            border: 1px solid var(--accent-dim);
+            color: var(--terminal-fg);
         }
     </style>
 </head>
@@ -1037,12 +1066,14 @@
             };
         }
 
-        function useItem(name, quantity = 1, location = null) {
+        function useItem(name, quantity = 1, location = null, itemId = null) {
             const items = getInventory();
             const normalizedName = normalizeItemName(name);
 
             let item;
-            if (location) {
+            if (itemId) {
+                item = items.find(i => String(i.id) === String(itemId));
+            } else if (location) {
                 item = items.find(i => i.name.toLowerCase() === normalizedName && i.location === location);
             } else {
                 item = items.find(i => i.name.toLowerCase() === normalizedName);
@@ -1066,12 +1097,14 @@
             return { message: `Consumed ${quantity} ${item.unit || 'unit'}(s) of ${item.name} from ${item.location}. ${remaining} remaining.`, details: { name, location: item.location, remaining } };
         }
 
-        function modifyItem(name, newShelfLife, location = null) {
+        function modifyItem(name, newShelfLife, location = null, itemId = null) {
             const items = getInventory();
             const normalizedName = normalizeItemName(name);
 
             let item;
-            if (location) {
+            if (itemId) {
+                item = items.find(i => String(i.id) === String(itemId));
+            } else if (location) {
                 item = items.find(i => i.name.toLowerCase() === normalizedName && i.location === location);
             } else {
                 item = items.find(i => i.name.toLowerCase() === normalizedName);
@@ -1444,15 +1477,30 @@
 
         // --- PENDING QUESTIONS SYSTEM ---
 
-        function showPendingQuestions(questions, callback) {
+        function formatInventoryOption(item) {
+            const expiring = getExpiringItems().find(e => e.id === item.id);
+            const added = new Date(item.addedDate);
+            const expires = new Date(added.getTime() + item.shelfLife * 24 * 60 * 60 * 1000);
+            return `${item.location.toUpperCase()} | ${item.quantity} ${item.unit || 'unit'}(s) | EXP ${expires.toLocaleDateString()} | T-${expiring ? expiring.daysLeft : '?'}d`;
+        }
+
+        function showConfirmationPanel(config, callback) {
             const container = document.getElementById('pendingQuestions');
             const panel = document.createElement('div');
             panel.className = 'pending-questions';
 
             const label = document.createElement('label');
-            label.textContent = 'ADDITIONAL PARAMETERS REQUIRED:';
+            label.textContent = config.title || 'CONFIRMATION REQUIRED:';
             panel.appendChild(label);
 
+            if (config.summary) {
+                const summary = document.createElement('div');
+                summary.className = 'pending-summary';
+                summary.textContent = config.summary;
+                panel.appendChild(summary);
+            }
+
+            const questions = config.questions || [];
             questions.forEach((q, idx) => {
                 if (q.type === 'select') {
                     const select = document.createElement('select');
@@ -1466,6 +1514,17 @@
                     });
 
                     panel.appendChild(select);
+                    if (q.options.some(opt => opt.detail)) {
+                        const detail = document.createElement('div');
+                        detail.className = 'pending-option-detail';
+                        const updateDetail = () => {
+                            const selected = q.options.find(opt => String(opt.value) === select.value);
+                            detail.textContent = selected?.detail || '';
+                        };
+                        select.addEventListener('change', updateDetail);
+                        updateDetail();
+                        panel.appendChild(detail);
+                    }
                 } else {
                     const input = document.createElement('input');
                     input.type = q.type;
@@ -1476,25 +1535,83 @@
                 }
             });
 
+            const actions = document.createElement('div');
+            actions.className = 'pending-actions';
+
             const submitButton = document.createElement('button');
             submitButton.type = 'button';
-            submitButton.textContent = 'CONFIRM PARAMETERS';
+            submitButton.textContent = config.confirmText || 'CONFIRM';
             submitButton.addEventListener('click', submitPendingQuestions);
-            panel.appendChild(submitButton);
+            actions.appendChild(submitButton);
+
+            const cancelButton = document.createElement('button');
+            cancelButton.type = 'button';
+            cancelButton.className = 'secondary';
+            cancelButton.textContent = config.cancelText || 'CANCEL';
+            cancelButton.addEventListener('click', cancelPendingQuestions);
+            actions.appendChild(cancelButton);
+            panel.appendChild(actions);
 
             container.replaceChildren(panel);
-            pendingQuestions = { questions, callback };
+            pendingQuestions = { questions, callback, cancelMessage: config.cancelMessage || 'Operation cancelled.' };
+        }
+
+        function showPendingQuestions(questions, callback, config = {}) {
+            showConfirmationPanel({
+                title: config.title || 'ADDITIONAL PARAMETERS REQUIRED:',
+                summary: config.summary || '',
+                questions,
+                confirmText: config.confirmText || 'CONFIRM PARAMETERS',
+                cancelText: config.cancelText,
+                cancelMessage: config.cancelMessage
+            }, callback);
         }
 
         function submitPendingQuestions() {
             if (!pendingQuestions) return;
-            const answers = pendingQuestions.questions.map((q, idx) => {
+            const activePending = pendingQuestions;
+            const answers = activePending.questions.map((q, idx) => {
                 const val = document.getElementById(`pending-${idx}`).value;
                 return q.type === 'number' ? parseFloat(val) || 0 : val;
             });
             document.getElementById('pendingQuestions').replaceChildren();
-            pendingQuestions.callback(answers);
             pendingQuestions = null;
+            activePending.callback(answers);
+        }
+
+        function cancelPendingQuestions() {
+            if (!pendingQuestions) return;
+            const message = pendingQuestions.cancelMessage;
+            document.getElementById('pendingQuestions').replaceChildren();
+            pendingQuestions = null;
+            addMessage(message, 'system');
+        }
+
+        function getMatchingItems(name, location = null) {
+            const normalizedName = normalizeItemName(name);
+            return getInventory().filter(item => item.name.toLowerCase() === normalizedName && (!location || item.location === location));
+        }
+
+        function buildItemSelectionQuestion(matches) {
+            return {
+                type: 'select',
+                options: matches.map(item => ({
+                    value: String(item.id),
+                    label: `${item.name.toUpperCase()} — ${formatInventoryOption(item)}`,
+                    detail: `Location: ${item.location.toUpperCase()}\nQuantity: ${item.quantity} ${item.unit || 'unit'}(s)\nExpiration: ${formatInventoryOption(item).split(' | EXP ')[1]}`
+                }))
+            };
+        }
+
+        function withOperationConfirmation(config, operation) {
+            showConfirmationPanel({
+                title: config.title || 'EXPLICIT CONFIRMATION REQUIRED:',
+                summary: config.summary,
+                questions: config.questions || [],
+                confirmText: config.confirmText || 'APPLY OPERATION',
+                cancelMessage: config.cancelMessage || 'Operation cancelled before registry changes.'
+            }, (answers) => operation(answers));
+            return { type: 'pending' };
         }
 
         // --- COMMAND PROCESSING ---
@@ -1575,10 +1692,10 @@
             return aliases[value] || value;
         }
 
-        function moveItem(name, destination) {
+        function moveItem(name, destination, itemId = null) {
             const items = getInventory();
             const normalizedName = normalizeItemName(name);
-            const matches = items.filter(i => i.name.toLowerCase() === normalizedName);
+            const matches = itemId ? items.filter(i => String(i.id) === String(itemId)) : items.filter(i => i.name.toLowerCase() === normalizedName);
             if (matches.length === 0) return { error: `ERROR: ${name} not found in registry.` };
             if (matches.length > 1) return { error: `ERROR: ${name} exists in multiple locations. Specify source location before transfer.` };
             matches[0].location = destination;
@@ -1669,34 +1786,76 @@
 
             const useParsed = parseInventoryPhrase(text, 'use');
             if (useParsed) {
-                if (!useParsed.quantity) {
-                    showPendingQuestions([{ type: 'number', placeholder: 'QUANTITY USED', step: 0.25 }], (answers) => {
-                        const result = useItem(useParsed.item, answers[0] || 1, useParsed.location);
+                const buildConsumeConfirmation = (quantity) => {
+                    const matches = getMatchingItems(useParsed.item, useParsed.location);
+                    if (matches.length === 0) return { message: `ERROR: ${useParsed.item} not found in registry.`, error: true };
+                    const quantityMatches = matches.filter(item => item.quantity >= quantity);
+                    if (quantityMatches.length === 0) return { message: `ERROR: Insufficient quantity for ${useParsed.item}.`, error: true };
+                    const deletesItem = quantityMatches.some(item => item.quantity === quantity);
+                    const needsSelection = quantityMatches.length > 1;
+                    const uncertainParsing = !useParsed.unit && text.split(/\s+/).length <= 3;
+                    if (!deletesItem && !needsSelection && !uncertainParsing) {
+                        const result = useItem(useParsed.item, quantity, useParsed.location, quantityMatches[0].id);
+                        return { message: result.error || result.message, error: !!result.error };
+                    }
+                    const reasons = [];
+                    if (deletesItem) reasons.push('requested quantity will consume all remaining stock for at least one match');
+                    if (needsSelection) reasons.push('multiple matching assets were found');
+                    if (uncertainParsing) reasons.push('command parsing is uncertain');
+                    return withOperationConfirmation({
+                        summary: `Operation: consume ${quantity} ${useParsed.unit || 'unit'}(s) of ${useParsed.item}.\nReason: ${reasons.join('; ')}.`,
+                        questions: needsSelection ? [buildItemSelectionQuestion(quantityMatches)] : [],
+                        confirmText: deletesItem ? 'CONFIRM DEPLETION' : 'CONFIRM CONSUME'
+                    }, (answers) => {
+                        const itemId = needsSelection ? answers[0] : quantityMatches[0].id;
+                        const result = useItem(useParsed.item, quantity, useParsed.location, itemId);
                         addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
                     });
+                };
+
+                if (!useParsed.quantity) {
+                    showPendingQuestions([{ type: 'number', placeholder: 'QUANTITY USED', step: 0.25 }], (answers) => {
+                        const response = buildConsumeConfirmation(answers[0] || 1);
+                        if (response && response.type !== 'pending') addMessage(response.message, response.error ? 'error' : 'assistant');
+                    }, { summary: `Specify quantity before VIKI can confirm consumption of ${useParsed.item}.` });
                     return { type: 'pending' };
                 }
 
-                const result = useItem(useParsed.item, useParsed.quantity, useParsed.location);
-                if (result.error) return { message: result.error, error: true };
-                return { message: result.message };
+                return buildConsumeConfirmation(useParsed.quantity);
             }
 
             const moveParsed = parseInventoryPhrase(text, 'move');
             if (moveParsed) {
-                if (!moveParsed.location) {
-                    showPendingQuestions([{ type: 'select', options: [
-                        { value: 'fridge', label: 'THERMAL PRESERVATION UNIT (FRIDGE)' },
-                        { value: 'freezer', label: 'CRYOGENIC STORAGE (FREEZER)' },
-                        { value: 'cupboard', label: 'DRY GOODS REPOSITORY (CUPBOARD)' }
-                    ]}], (answers) => {
-                        const result = moveItem(moveParsed.item, answers[0]);
-                        addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
+                const destinationQuestion = { type: 'select', options: [
+                    { value: 'fridge', label: 'THERMAL PRESERVATION UNIT (FRIDGE)' },
+                    { value: 'freezer', label: 'CRYOGENIC STORAGE (FREEZER)' },
+                    { value: 'cupboard', label: 'DRY GOODS REPOSITORY (CUPBOARD)' }
+                ]};
+                const matches = getMatchingItems(moveParsed.item);
+                if (matches.length === 0) return { message: `ERROR: ${moveParsed.item} not found in registry.`, error: true };
+                const needsSelection = matches.length > 1;
+                const applyMove = (destination, itemId) => {
+                    const result = moveItem(moveParsed.item, destination, itemId);
+                    addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
+                };
+
+                if (!moveParsed.location || needsSelection) {
+                    const questions = [];
+                    if (!moveParsed.location) questions.push(destinationQuestion);
+                    if (needsSelection) questions.push(buildItemSelectionQuestion(matches));
+                    return withOperationConfirmation({
+                        summary: `Operation: move ${moveParsed.item}${moveParsed.location ? ` to ${moveParsed.location}` : ''}.\nReason: ${needsSelection ? 'multiple matching assets were found' : 'destination requires confirmation'}.`,
+                        questions,
+                        confirmText: 'CONFIRM MOVE'
+                    }, (answers) => {
+                        let answerIndex = 0;
+                        const destination = moveParsed.location || answers[answerIndex++];
+                        const itemId = needsSelection ? answers[answerIndex++] : matches[0].id;
+                        applyMove(destination, itemId);
                     });
-                    return { type: 'pending' };
                 }
 
-                const result = moveItem(moveParsed.item, moveParsed.location);
+                const result = moveItem(moveParsed.item, moveParsed.location, matches[0].id);
                 if (result.error) return { message: result.error, error: true };
                 return { message: result.message };
             }
@@ -1707,18 +1866,57 @@
                 if (itemMatch) {
                     const item = normalizeItemName(itemMatch[1].replace(/\b(?:expiration|shelf life|degradation)\b/g, ''));
                     const newDays = itemMatch[2] ? parseInt(itemMatch[2]) : null;
+                    const buildModifyConfirmation = (days) => {
+                        const matches = getMatchingItems(item);
+                        if (matches.length === 0) return { message: `ERROR: ${item} not found in registry.`, error: true };
+                        const needsSelection = matches.length > 1;
+                        return withOperationConfirmation({
+                            summary: `Operation: set ${item} degradation timeline to ${days} days.\nReason: ${needsSelection ? 'multiple matching assets were found' : 'timeline modification requires explicit confirmation'}.`,
+                            questions: needsSelection ? [buildItemSelectionQuestion(matches)] : [],
+                            confirmText: 'CONFIRM MODIFICATION'
+                        }, (answers) => {
+                            const itemId = needsSelection ? answers[0] : matches[0].id;
+                            const result = modifyItem(item, days, null, itemId);
+                            addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
+                        });
+                    };
 
                     if (!newDays) {
                         showPendingQuestions([{ type: 'number', placeholder: 'NEW DEGRADATION TIMELINE (days)', step: 1 }], (answers) => {
-                            const result = modifyItem(item, answers[0]);
-                            addMessage(result.message, 'assistant');
-                        });
+                            const response = buildModifyConfirmation(answers[0]);
+                            if (response && response.type !== 'pending') addMessage(response.message, response.error ? 'error' : 'assistant');
+                        }, { summary: `Specify timeline before VIKI can confirm modification of ${item}.` });
                         return { type: 'pending' };
                     }
 
-                    const result = modifyItem(item, newDays);
-                    return { message: result.message };
+                    return buildModifyConfirmation(newDays);
                 }
+            }
+
+
+            // Explicit removal
+            const removeMatch = lower.match(/(?:delete|remove|discard|throw away)\s+(?:the\s+)?(.+?)(?:\s+from\s+(fridge|freezer|cupboard))?$/i);
+            if (removeMatch) {
+                const item = normalizeItemName(removeMatch[1]);
+                const location = removeMatch[2] || null;
+                const matches = getMatchingItems(item, location);
+                if (matches.length === 0) return { message: `ERROR: ${item} not found in registry.`, error: true };
+                const needsSelection = matches.length > 1;
+                return withOperationConfirmation({
+                    summary: `Operation: delete ${item}${location ? ` from ${location}` : ''}.\nReason: operation would delete an item${needsSelection ? '; multiple matching assets were found' : ''}.`,
+                    questions: needsSelection ? [buildItemSelectionQuestion(matches)] : [],
+                    confirmText: 'CONFIRM DELETE'
+                }, (answers) => {
+                    const itemId = needsSelection ? answers[0] : matches[0].id;
+                    const items = getInventory();
+                    const target = items.find(existing => String(existing.id) === String(itemId));
+                    if (!target) {
+                        addMessage(`ERROR: ${item} not found in registry.`, 'error');
+                        return;
+                    }
+                    saveInventory(items.filter(existing => String(existing.id) !== String(itemId)));
+                    addMessage(`Removed ${target.name} from ${target.location} registry.`, 'assistant');
+                });
             }
 
             // Status/Expiring
@@ -1813,17 +2011,18 @@
         function applyInventoryAction(action) {
             const quantity = Number(action.quantity ?? 1);
             const location = action.location || null;
+            const itemId = action.itemId || null;
             if (action.type === 'add_item') {
                 return addItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, action.shelfLife ? Number(action.shelfLife) : null, action.category || null).message;
             }
             if (action.type === 'consume_item') {
-                const result = useItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location);
+                const result = useItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, itemId);
                 if (result.error) throw new Error(result.error);
                 return result.message;
             }
             if (action.type === 'modify_item') {
                 const items = getInventory();
-                const target = items.find(item => item.name.toLowerCase() === action.name.toLowerCase() && (!location || item.location === location));
+                const target = itemId ? items.find(item => String(item.id) === String(itemId)) : items.find(item => item.name.toLowerCase() === action.name.toLowerCase() && (!location || item.location === location));
                 if (!target) throw new Error(`ERROR: ${action.name} not found in registry.`);
                 if (action.quantity !== undefined) target.quantity = Number(action.quantity);
                 if (action.category) target.category = action.category;
@@ -1836,7 +2035,7 @@
             }
             if (action.type === 'remove_item') {
                 const items = getInventory();
-                const remaining = items.filter(item => !(item.name.toLowerCase() === action.name.toLowerCase() && (!location || item.location === location)));
+                const remaining = itemId ? items.filter(item => String(item.id) !== String(itemId)) : items.filter(item => !(item.name.toLowerCase() === action.name.toLowerCase() && (!location || item.location === location)));
                 if (remaining.length === items.length) throw new Error(`ERROR: ${action.name} not found in registry.`);
                 saveInventory(remaining);
                 return `Removed ${action.name} from registry.`;
@@ -1848,7 +2047,53 @@
             return 'No operation executed.';
         }
 
+        function getActionConfirmationReasons(action) {
+            if (!['consume_item', 'modify_item', 'remove_item'].includes(action.type)) return [];
+            const matches = action.name ? getMatchingItems(action.name, action.location || null) : [];
+            const quantity = Number(action.quantity ?? 1);
+            const reasons = ['AI registry mutations require explicit confirmation'];
+            if (action.type === 'remove_item') reasons.push('operation would delete an item');
+            if (action.type === 'consume_item' && matches.some(item => item.quantity === quantity)) reasons.push('operation would consume all remaining quantity');
+            if (!action.location && matches.length > 1) reasons.push('operation matches multiple assets');
+            if (!action.confidence || action.confidence < 0.8) reasons.push('parsing confidence is uncertain');
+            return reasons;
+        }
+
         function applyAIResponse(payload) {
+            const riskyActions = payload.actions.map((action, actionIndex) => ({ action, actionIndex, reasons: getActionConfirmationReasons(action) })).filter(entry => entry.reasons.length > 0);
+            if (riskyActions.length > 0) {
+                const questions = [];
+                const selectionIndexes = new Map();
+                const summary = riskyActions.map((entry, index) => {
+                    const matches = entry.action.name ? getMatchingItems(entry.action.name, entry.action.location || null) : [];
+                    if (!entry.action.location && matches.length > 1) {
+                        selectionIndexes.set(entry.actionIndex, questions.length);
+                        questions.push(buildItemSelectionQuestion(matches));
+                    }
+                    const options = matches.length > 1 ? `\nOptions:\n${matches.map(item => `  ${formatInventoryOption(item)}`).join('\n')}` : '';
+                    return `${index + 1}. ${entry.action.type} ${entry.action.name || ''} — ${entry.reasons.join('; ')}.${options}`;
+                }).join('\n\n');
+
+                withOperationConfirmation({
+                    summary: `${payload.message}\n\nPending AI operation review:\n${summary}`,
+                    questions,
+                    confirmText: 'CONFIRM AI OPERATIONS'
+                }, (answers) => {
+                    try {
+                        const confirmedActions = payload.actions.map((action, actionIndex) => {
+                            if (!selectionIndexes.has(actionIndex)) return action;
+                            return { ...action, itemId: answers[selectionIndexes.get(actionIndex)] };
+                        });
+                        const results = [];
+                        confirmedActions.forEach(action => results.push(applyInventoryAction(action)));
+                        addMessage(results.map(result => `ACTION_LOG: ${result}`).join('\n'), 'assistant');
+                    } catch (error) {
+                        addMessage(error.message, 'error');
+                    }
+                });
+                return `${payload.message}\n\nCONFIRMATION REQUIRED: Review the pending panel before registry changes are applied.`;
+            }
+
             const results = [];
             payload.actions.forEach(action => results.push(applyInventoryAction(action)));
             return [payload.message, ...results.map(result => `ACTION_LOG: ${result}`)].join('\n');
