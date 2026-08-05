@@ -1770,7 +1770,7 @@
                 return (match || q.options[0]).value;
             });
             pendingQuestions = null;
-            activePending.callback(answers);
+            activePending.callback(answers, reply);
         }
 
         function cancelPendingQuestions() {
@@ -1827,8 +1827,22 @@
 
             const localResponse = await handleLocalCommand(text);
             if (localResponse) {
+                if (localResponse.type === 'pending') {
+                    showTyping(false);
+                    return;
+                }
+                if (localResponse.error) {
+                    try {
+                        const response = await callAI(`The local command handler reported this error: "${localResponse.message}". Assist the Operator with their original request: "${text}". Explain the correction and use a validated action only if it safely fulfills the request.`);
+                        showTyping(false);
+                        addMessage(`${localResponse.message}\n\nAI ASSISTANCE:\n${response}`, 'assistant');
+                    } catch (error) {
+                        showTyping(false);
+                        addMessage(`${localResponse.message}\nAI assistance was unavailable: ${error.message}`, 'error');
+                    }
+                    return;
+                }
                 showTyping(false);
-                if (localResponse.type === 'pending') return;
                 addMessage(localResponse.message, localResponse.error ? 'error' : 'assistant');
                 return;
             }
@@ -1951,6 +1965,10 @@
             if (addParsed) {
                 const item = addParsed.item;
                 const assetInfo = getAssetInfo(item);
+                if (assetInfo.inferred) {
+                    await recommendUnknownItem(addParsed, assetInfo);
+                    return { type: 'pending' };
+                }
                 const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note);
                 const inference = !addParsed.location ? ' VIKI selected this location using saved sorting rules and preset food logic.' : '';
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.${inference} Current status: ${result.details.daysLeft} days until degradation.` };
@@ -2271,7 +2289,60 @@
             return [payload.message, ...results.map(result => `ACTION_LOG: ${result}`)].join('\n');
         }
 
-        async function callAI(userMessage) {
+        async function recommendUnknownItem(parsed, defaultInfo) {
+            const defaultChoice = {
+                shelfLife: Number(defaultInfo.days) || 14,
+                location: parsed.location || defaultInfo.location || 'fridge',
+                category: defaultInfo.category || 'general'
+            };
+            let recommendation = null;
+            let aiMessage = '';
+
+            try {
+                const payload = await callAI(`UNFAMILIAR ASSET REVIEW: Determine a likely safe household storage location, category, and shelf life in days for "${parsed.item}". Consider the item name and ordinary food-storage knowledge. Return exactly one add_item action, but do not claim it has already been added.`, { apply: false });
+                const action = payload.actions.find(candidate => candidate.type === 'add_item');
+                const shelfLife = Number(action?.shelfLife);
+                if (action && Number.isFinite(shelfLife) && shelfLife > 0 && ['fridge', 'freezer', 'cupboard'].includes(action.location)) {
+                    recommendation = {
+                        shelfLife: Math.round(shelfLife),
+                        location: parsed.location || action.location,
+                        category: action.category || defaultChoice.category
+                    };
+                    aiMessage = payload.message;
+                } else {
+                    throw new Error('AI did not return a usable shelf-life recommendation.');
+                }
+            } catch (error) {
+                aiMessage = `AI review unavailable: ${error.message}`;
+            }
+
+            const aiChoice = recommendation || defaultChoice;
+            const summary = [
+                `Unfamiliar asset: ${parsed.item.toUpperCase()}. No saved preset or heuristic matched.`,
+                `AI assessment: ${recommendation ? `${aiChoice.shelfLife} days in ${aiChoice.location.toUpperCase()} (${aiChoice.category}). ${aiMessage}` : aiMessage}`,
+                `Without AI, VIKI would default to ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()} (${defaultChoice.category}).`,
+                'Reply AI or CONFIRM to use the AI assessment, DEFAULT to use the non-AI fallback, or reply with a number of days to override the timeline.'
+            ].join('\n');
+
+            showConfirmationPanel({
+                title: 'UNFAMILIAR ASSET REVIEW:',
+                summary,
+                questions: [{ type: 'select', options: [
+                    { value: 'ai', label: `AI (${aiChoice.shelfLife} DAYS)` },
+                    { value: 'default', label: `DEFAULT (${defaultChoice.shelfLife} DAYS)` }
+                ]}],
+                cancelMessage: `${parsed.item} was not added.`
+            }, (answers, rawReply) => {
+                const customDays = Number.parseFloat(rawReply);
+                const selected = answers[0] === 'default' ? defaultChoice : aiChoice;
+                const shelfLife = Number.isFinite(customDays) && customDays > 0 ? customDays : selected.shelfLife;
+                const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note);
+                const source = Number.isFinite(customDays) && customDays > 0 ? 'Operator override' : (answers[0] === 'default' ? 'Non-AI default' : 'AI assessment');
+                addMessage(`${result.message} ${source}: ${shelfLife} day degradation timeline. Non-AI fallback was ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()}. You can change this later by specifying a new expiration timeline.`, 'assistant');
+            });
+        }
+
+        async function callAI(userMessage, { apply = true } = {}) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();
@@ -2299,7 +2370,8 @@
 
                 if (!response.ok) throw new Error('Local AI connection failed');
                 const data = await response.json();
-                return applyAIResponse(validateAIResponse(safeParseAIJson(data.message.content)));
+                const payload = validateAIResponse(safeParseAIJson(data.message.content));
+                return apply ? applyAIResponse(payload) : payload;
 
             } else {
                 const response = await fetch(VENICE_API_URL, {
@@ -2319,7 +2391,8 @@
                 }
 
                 const data = await response.json();
-                return applyAIResponse(validateAIResponse(safeParseAIJson(data.choices[0].message.content)));
+                const payload = validateAIResponse(safeParseAIJson(data.choices[0].message.content));
+                return apply ? applyAIResponse(payload) : payload;
             }
         }
 
