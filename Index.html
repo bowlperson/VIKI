@@ -704,10 +704,10 @@
                 <div class="item-count" id="itemCount">0 assets</div>
             </div>
             <div class="filter-tabs">
-                <div class="filter-tab active" onclick="filterInventory('all', this)">ALL</div>
-                <div class="filter-tab" onclick="filterInventory('fridge', this)">FRIDGE</div>
-                <div class="filter-tab" onclick="filterInventory('freezer', this)">FREEZER</div>
-                <div class="filter-tab" onclick="filterInventory('cupboard', this)">CUPBOARD</div>
+                <div class="filter-tab active" data-filter="all">ALL</div>
+                <div class="filter-tab" data-filter="fridge">FRIDGE</div>
+                <div class="filter-tab" data-filter="freezer">FREEZER</div>
+                <div class="filter-tab" data-filter="cupboard">CUPBOARD</div>
             </div>
             <div class="inventory-controls">
                 <input type="search" class="inventory-control" id="inventorySearch" placeholder="SEARCH_ASSETS">
@@ -876,6 +876,7 @@
             const savedLocal = localStorage.getItem('viki_local');
             if (savedLocal) document.getElementById('useLocalAI').checked = savedLocal === 'true';
 
+            initializeFilterTabs();
             loadAssetDatabase();
             updateStatus();
             renderInventory();
@@ -1214,10 +1215,16 @@
             renderInventory();
         }
 
-        function filterInventory(filter, tabEl = null) {
+        function initializeFilterTabs() {
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.addEventListener('click', () => filterInventory(tab.dataset.filter, tab));
+            });
+        }
+
+        function filterInventory(filter, tabElement) {
             currentFilter = filter;
             document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
-            if (tabEl) tabEl.classList.add('active');
+            tabElement.classList.add('active');
             renderInventory();
         }
 
