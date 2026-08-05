@@ -1059,7 +1059,7 @@
                 const location = specifiedLocation || assetInfo.location;
                 const result = addItem(item, quantity, location);
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days. Current status: ${result.details.daysLeft} days until degradation.` };
-n             }
+            }
             
             // Use with fractions
             const useMatch = lower.match(/(?:used?|ate?|consumed?)\\s+(?:(\\d+\\.?\\d*)|half|quarter)?\\s*(?:of\\s+)?(?:the\\s+)?(\\w+)(?:\\s+from\\s+(fridge|freezer|cupboard))?/i);
