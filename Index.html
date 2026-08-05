@@ -354,6 +354,19 @@
             border-color: var(--accent-cyan);
         }
 
+        .config-textarea {
+            min-height: 104px;
+            resize: vertical;
+            line-height: 1.35;
+        }
+
+        .config-help {
+            color: var(--accent-dim);
+            font-size: 0.65rem;
+            line-height: 1.35;
+            margin: 4px 0 8px;
+        }
+
         .config-actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -571,32 +584,6 @@
         .voice-status.denied,
         .voice-status.unsupported { color: var(--accent-red); }
 
-        .voice-confirm {
-            display: none;
-            align-items: center;
-            gap: 8px;
-            margin-top: 8px;
-            flex-wrap: wrap;
-            color: var(--accent-amber);
-            font-size: 0.75rem;
-        }
-
-        .voice-confirm.show { display: flex; }
-
-        .voice-confirm button {
-            background: #111113;
-            border: 1px solid var(--border-color);
-            color: var(--terminal-fg);
-            padding: 4px 10px;
-            font-family: 'Share Tech Mono', monospace;
-            cursor: pointer;
-        }
-
-        .voice-confirm button:hover {
-            border-color: var(--accent-cyan);
-            color: var(--accent-cyan);
-        }
-
         .typing-indicator {
             display: none;
             padding: 8px 16px;
@@ -658,68 +645,6 @@
             opacity: 0.5;
         }
 
-        .pending-questions {
-            background: #1a1a1c;
-            border: 1px solid var(--accent-amber);
-            padding: 12px;
-            margin: 8px 16px;
-            border-radius: 4px;
-        }
-
-        .pending-questions label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--accent-amber);
-            font-size: 0.8rem;
-        }
-
-        .pending-questions select, .pending-questions input {
-            width: 100%;
-            padding: 6px;
-            margin-bottom: 8px;
-            background: #0a0a0c;
-            border: 1px solid var(--border-color);
-            color: var(--terminal-fg);
-            font-family: 'Share Tech Mono', monospace;
-        }
-
-        .pending-summary {
-            color: var(--terminal-fg);
-            font-size: 0.82rem;
-            line-height: 1.4;
-            margin-bottom: 10px;
-            white-space: pre-wrap;
-        }
-
-        .pending-option-detail {
-            border: 1px solid var(--border-color);
-            color: var(--terminal-fg);
-            font-size: 0.75rem;
-            line-height: 1.35;
-            margin: -4px 0 8px;
-            padding: 6px;
-        }
-
-        .pending-actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .pending-questions button {
-            background: var(--accent-amber);
-            color: #000;
-            border: none;
-            padding: 6px 12px;
-            cursor: pointer;
-            font-family: 'Share Tech Mono', monospace;
-        }
-
-        .pending-questions button.secondary {
-            background: transparent;
-            border: 1px solid var(--accent-dim);
-            color: var(--terminal-fg);
-        }
     </style>
 </head>
 <body>
@@ -834,6 +759,26 @@
                     <input type="checkbox" id="useLocalAI">
                     <label class="toggle-label">LOCAL_MODE [OLLAMA]</label>
                 </div>
+                <details>
+                    <summary class="config-title">// SORTING &amp; TAG SETTINGS</summary>
+                    <div class="config-row">
+                        <label class="config-label" for="fallbackLocation">UNKNOWN_ITEM_DEFAULT</label>
+                        <select class="config-select" id="fallbackLocation">
+                            <option value="fridge">FRIDGE</option>
+                            <option value="cupboard">CUPBOARD</option>
+                            <option value="freezer">FREEZER</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="sortingRules">FOOD | TAGS | LOCATION | DAYS</label>
+                        <textarea class="config-input config-textarea" id="sortingRules" spellcheck="false"></textarea>
+                        <div class="config-help">One rule per line. Tags are comma-separated aliases or keywords. VIKI uses exact names first, then tags, then the unknown-item default.</div>
+                    </div>
+                    <div class="config-actions">
+                        <button type="button" class="config-button" id="saveRulesButton">SAVE_RULES</button>
+                        <button type="button" class="config-button" id="resetRulesButton">RESET_PRESETS</button>
+                    </div>
+                </details>
                 <div class="config-actions">
                     <button type="button" class="config-button" id="exportDataButton">EXPORT_DATA</button>
                     <button type="button" class="config-button" id="importDataButton">IMPORT_DATA</button>
@@ -853,7 +798,6 @@
             <div class="typing-indicator" id="typingIndicator">
                 Processing request<span class="cursor"></span>
             </div>
-            <div id="pendingQuestions"></div>
             <div class="input-area">
                 <div class="quick-commands">
                     <button class="quick-cmd" onclick="quickMessage('Status report')">STATUS</button>
@@ -868,11 +812,6 @@
                     <button class="send-btn" onclick="sendMessage()">EXECUTE</button>
                 </div>
                 <div class="voice-status" id="voiceStatus">VOICE: STANDBY</div>
-                <div class="voice-confirm" id="voiceConfirm">
-                    <span>VOICE TRANSCRIPT READY. CONFIRM EXECUTION?</span>
-                    <button onclick="confirmVoiceTranscript()">CONFIRM</button>
-                    <button onclick="cancelVoiceTranscript()">CANCEL</button>
-                </div>
             </div>
         </div>
     </div>
@@ -887,6 +826,7 @@
         // --- DATA STORAGE ---
         const DB_KEY = 'viki_inventory_v2';
         const CATEGORIES_KEY = 'viki_categories';
+        const FALLBACK_LOCATION_KEY = 'viki_fallback_location';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -920,7 +860,6 @@
         let pendingQuestions = null;
         let recognition = null;
         let isListening = false;
-        let pendingVoiceTranscript = '';
         let currentVoiceState = 'standby';
 
         // Initialize
@@ -934,8 +873,11 @@
             const savedLocal = localStorage.getItem('viki_local');
             if (savedLocal) document.getElementById('useLocalAI').checked = savedLocal === 'true';
 
+            document.getElementById('fallbackLocation').value = localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge';
+
             initializeFilterTabs();
             loadAssetDatabase();
+            renderSortingRules();
             updateStatus();
             renderInventory();
             checkExpiringItems();
@@ -992,7 +934,8 @@
             return isPlainObject(categories) && Object.values(categories).every(entry => isPlainObject(entry)
                 && Number.isFinite(Number(entry.days))
                 && typeof entry.category === 'string'
-                && typeof entry.location === 'string');
+                && typeof entry.location === 'string'
+                && (entry.tags === undefined || (Array.isArray(entry.tags) && entry.tags.every(tag => typeof tag === 'string'))));
         }
 
         function validateModelSettingsImport(settings) {
@@ -1105,13 +1048,67 @@
         function getAssetInfo(name) {
             const db = getAssetDatabase();
             const normalizedName = normalizeItemName(name);
-            return db[normalizedName] || db[name.toLowerCase().trim()] || db['default'];
+            const exact = db[normalizedName] || db[name.toLowerCase().trim()];
+            if (exact) return exact;
+
+            const tagged = Object.entries(db).find(([key, entry]) => key !== 'default'
+                && Array.isArray(entry.tags)
+                && entry.tags.some(tag => normalizedName.includes(normalizeItemName(tag))));
+            if (tagged) return tagged[1];
+
+            const heuristics = [
+                { pattern: /(?:frozen|ice cream)/, location: 'freezer', days: 90, category: 'frozen' },
+                { pattern: /(?:milk|cream|cheese|yogurt|meat|chicken|fish|egg|lettuce|berry|berries)/, location: 'fridge', days: 7, category: 'perishable' },
+                { pattern: /(?:rice|pasta|flour|sugar|cereal|bean|can|tin|spice|coffee|tea|bread)/, location: 'cupboard', days: 180, category: 'dry goods' }
+            ].find(rule => rule.pattern.test(normalizedName));
+            if (heuristics) return heuristics;
+
+            return { ...(db.default || { days: 14, category: 'general' }), location: localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge', inferred: true };
         }
 
         function addAssetToDatabase(name, info) {
             const db = getAssetDatabase();
             db[normalizeItemName(name)] = info;
             saveAssetDatabase(db);
+        }
+
+        function renderSortingRules() {
+            const db = getAssetDatabase();
+            document.getElementById('sortingRules').value = Object.entries(db)
+                .filter(([name]) => name !== 'default')
+                .map(([name, info]) => `${name} | ${(info.tags || []).join(', ')} | ${info.location} | ${info.days}`)
+                .join('\n');
+        }
+
+        function saveSortingRules() {
+            try {
+                const rules = {};
+                document.getElementById('sortingRules').value.split('\n').filter(line => line.trim()).forEach((line, index) => {
+                    const [rawName, rawTags, rawLocation, rawDays] = line.split('|').map(value => value.trim());
+                    const name = normalizeItemName(rawName);
+                    const location = rawLocation?.toLowerCase();
+                    const days = Number(rawDays);
+                    if (!name || !['fridge', 'freezer', 'cupboard'].includes(location) || !Number.isFinite(days) || days <= 0) {
+                        throw new Error(`Rule ${index + 1} must use FOOD | TAGS | LOCATION | DAYS.`);
+                    }
+                    const previous = getAssetDatabase()[name];
+                    rules[name] = { days, category: previous?.category || 'custom', location, tags: rawTags ? rawTags.split(',').map(tag => tag.trim()).filter(Boolean) : [] };
+                });
+                rules.default = { ...DEFAULT_ASSETS.default, location: document.getElementById('fallbackLocation').value };
+                saveAssetDatabase(rules);
+                localStorage.setItem(FALLBACK_LOCATION_KEY, document.getElementById('fallbackLocation').value);
+                addMessage('Sorting rules saved. Future unqualified additions will use the updated name, tag, and fallback logic.', 'system');
+            } catch (error) {
+                addMessage(`Sorting rules rejected: ${error.message}`, 'error');
+            }
+        }
+
+        function resetSortingRules() {
+            saveAssetDatabase(DEFAULT_ASSETS);
+            localStorage.setItem(FALLBACK_LOCATION_KEY, 'fridge');
+            document.getElementById('fallbackLocation').value = 'fridge';
+            renderSortingRules();
+            addMessage('Sorting rules restored to VIKI presets.', 'system');
         }
 
         function isUsingLocalAI() {
@@ -1546,7 +1543,7 @@
 
             recognition.onend = () => {
                 isListening = false;
-                if (!pendingVoiceTranscript && currentVoiceState !== 'denied') setVoiceState('standby', 'STANDBY');
+                if (currentVoiceState !== 'denied' && currentVoiceState !== 'processing') setVoiceState('standby', 'STANDBY');
             };
 
             setVoiceState('standby', 'READY');
@@ -1560,8 +1557,6 @@
                 return;
             }
 
-            pendingVoiceTranscript = '';
-            document.getElementById('voiceConfirm').classList.remove('show');
             try {
                 recognition.start();
             } catch (error) {
@@ -1569,31 +1564,16 @@
             }
         }
 
-        function handleVoiceTranscript(transcript) {
+        async function handleVoiceTranscript(transcript) {
             const input = document.getElementById('messageInput');
             if (!transcript) {
                 setVoiceState('standby', 'NO SPEECH DETECTED');
                 return;
             }
 
-            pendingVoiceTranscript = transcript;
             input.value = transcript;
-            document.getElementById('voiceConfirm').classList.add('show');
-            setVoiceState('standby', 'AWAITING CONFIRMATION');
-        }
-
-        function confirmVoiceTranscript() {
-            if (!pendingVoiceTranscript) return;
-            document.getElementById('voiceConfirm').classList.remove('show');
-            pendingVoiceTranscript = '';
-            setVoiceState('standby', 'READY');
-            sendMessage();
-        }
-
-        function cancelVoiceTranscript() {
-            pendingVoiceTranscript = '';
-            document.getElementById('messageInput').value = '';
-            document.getElementById('voiceConfirm').classList.remove('show');
+            setVoiceState('processing', 'EXECUTING TRANSCRIPT');
+            await sendMessage();
             setVoiceState('standby', 'READY');
         }
 
@@ -1607,75 +1587,12 @@
         }
 
         function showConfirmationPanel(config, callback) {
-            const container = document.getElementById('pendingQuestions');
-            const panel = document.createElement('div');
-            panel.className = 'pending-questions';
-
-            const label = document.createElement('label');
-            label.textContent = config.title || 'CONFIRMATION REQUIRED:';
-            panel.appendChild(label);
-
-            if (config.summary) {
-                const summary = document.createElement('div');
-                summary.className = 'pending-summary';
-                summary.textContent = config.summary;
-                panel.appendChild(summary);
-            }
-
             const questions = config.questions || [];
-            questions.forEach((q, idx) => {
-                if (q.type === 'select') {
-                    const select = document.createElement('select');
-                    select.id = `pending-${idx}`;
-
-                    q.options.forEach(opt => {
-                        const option = document.createElement('option');
-                        option.value = opt.value;
-                        option.textContent = opt.label;
-                        select.appendChild(option);
-                    });
-
-                    panel.appendChild(select);
-                    if (q.options.some(opt => opt.detail)) {
-                        const detail = document.createElement('div');
-                        detail.className = 'pending-option-detail';
-                        const updateDetail = () => {
-                            const selected = q.options.find(opt => String(opt.value) === select.value);
-                            detail.textContent = selected?.detail || '';
-                        };
-                        select.addEventListener('change', updateDetail);
-                        updateDetail();
-                        panel.appendChild(detail);
-                    }
-                } else {
-                    const input = document.createElement('input');
-                    input.type = q.type;
-                    input.id = `pending-${idx}`;
-                    input.placeholder = q.placeholder;
-                    input.step = q.step || 1;
-                    panel.appendChild(input);
-                }
-            });
-
-            const actions = document.createElement('div');
-            actions.className = 'pending-actions';
-
-            const submitButton = document.createElement('button');
-            submitButton.type = 'button';
-            submitButton.textContent = config.confirmText || 'CONFIRM';
-            submitButton.addEventListener('click', submitPendingQuestions);
-            actions.appendChild(submitButton);
-
-            const cancelButton = document.createElement('button');
-            cancelButton.type = 'button';
-            cancelButton.className = 'secondary';
-            cancelButton.textContent = config.cancelText || 'CANCEL';
-            cancelButton.addEventListener('click', cancelPendingQuestions);
-            actions.appendChild(cancelButton);
-            panel.appendChild(actions);
-
-            container.replaceChildren(panel);
             pendingQuestions = { questions, callback, cancelMessage: config.cancelMessage || 'Operation cancelled.' };
+            const choices = questions.map((question, index) => question.type === 'select'
+                ? `Choice ${index + 1}: ${question.options.map(option => option.label).join(' / ')}`
+                : `Value ${index + 1}: ${question.placeholder || 'number'}`).join('\n');
+            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply with the requested value, CONFIRM to accept VIKI's best match, or CANCEL.`, 'assistant');
         }
 
         function showPendingQuestions(questions, callback, config = {}) {
@@ -1689,14 +1606,15 @@
             }, callback);
         }
 
-        function submitPendingQuestions() {
+        function submitPendingQuestions(reply = 'confirm') {
             if (!pendingQuestions) return;
             const activePending = pendingQuestions;
-            const answers = activePending.questions.map((q, idx) => {
-                const val = document.getElementById(`pending-${idx}`).value;
-                return q.type === 'number' ? parseFloat(val) || 0 : val;
+            const answers = activePending.questions.map(q => {
+                if (q.type === 'number') return parseFloat(reply) || 1;
+                const normalizedReply = reply.toLowerCase();
+                const match = q.options.find(option => normalizedReply.includes(String(option.value).toLowerCase()) || normalizedReply.includes(option.label.toLowerCase()));
+                return (match || q.options[0]).value;
             });
-            document.getElementById('pendingQuestions').replaceChildren();
             pendingQuestions = null;
             activePending.callback(answers);
         }
@@ -1704,7 +1622,6 @@
         function cancelPendingQuestions() {
             if (!pendingQuestions) return;
             const message = pendingQuestions.cancelMessage;
-            document.getElementById('pendingQuestions').replaceChildren();
             pendingQuestions = null;
             addMessage(message, 'system');
         }
@@ -1743,7 +1660,10 @@
             const text = input.value.trim();
             if (!text) return;
             if (pendingQuestions) {
-                addMessage("Please complete parameter configuration above.", "system");
+                input.value = '';
+                addMessage(text, 'user');
+                if (/^(?:cancel|no|stop|never mind)$/i.test(text)) cancelPendingQuestions();
+                else submitPendingQuestions(text);
                 return;
             }
 
@@ -1877,33 +1797,9 @@
             if (addParsed) {
                 const item = addParsed.item;
                 const assetInfo = getAssetInfo(item);
-                const questions = [];
-                if (!addParsed.quantity) questions.push({ type: 'number', placeholder: 'QUANTITY', step: 0.25 });
-                if (!addParsed.location && (!assetInfo || assetInfo.category === 'general')) {
-                    questions.push({ type: 'select', options: [
-                        { value: 'fridge', label: 'THERMAL PRESERVATION UNIT (FRIDGE)' },
-                        { value: 'freezer', label: 'CRYOGENIC STORAGE (FREEZER)' },
-                        { value: 'cupboard', label: 'DRY GOODS REPOSITORY (CUPBOARD)' }
-                    ]});
-                    questions.push({ type: 'number', placeholder: 'DEGRADATION TIMELINE (days)', step: 1 });
-                }
-
-                if (questions.length > 0) {
-                    showPendingQuestions(questions, (answers) => {
-                        let answerIndex = 0;
-                        const quantity = addParsed.quantity || answers[answerIndex++] || 1;
-                        const needsNewAssetDetails = !addParsed.location && (!assetInfo || assetInfo.category === 'general');
-                        const location = addParsed.location || (needsNewAssetDetails ? answers[answerIndex++] : assetInfo.location);
-                        const shelfLife = needsNewAssetDetails ? (answers[answerIndex++] || 14) : null;
-                        const result = addItem(item, quantity, location, shelfLife, null, addParsed.unit, addParsed.note);
-                        if (shelfLife) addAssetToDatabase(item, { days: shelfLife, category: 'custom', location });
-                        addMessage(`${result.message} Location: ${result.details.location.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.`, 'assistant');
-                    });
-                    return { type: 'pending' };
-                }
-
-                const result = addItem(item, addParsed.quantity, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note);
-                return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days. Current status: ${result.details.daysLeft} days until degradation.` };
+                const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note);
+                const inference = !addParsed.location ? ' VIKI selected this location using saved sorting rules and preset food logic.' : '';
+                return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.${inference} Current status: ${result.details.daysLeft} days until degradation.` };
             }
 
             const useParsed = parseInventoryPhrase(text, 'use');
@@ -2213,7 +2109,7 @@
                         addMessage(error.message, 'error');
                     }
                 });
-                return `${payload.message}\n\nCONFIRMATION REQUIRED: Review the pending panel before registry changes are applied.`;
+                return `${payload.message}\n\nCONFIRMATION REQUIRED: Reply CONFIRM to apply VIKI's best match, provide a requested value, or reply CANCEL.`;
             }
 
             const results = [];
@@ -2229,7 +2125,8 @@
             if (!useLocal && !apiKey) throw new Error('API key required. Enter in configuration panel.');
 
             const inventory = getInventorySnapshot();
-            const inventoryContext = inventory.length > 0 ? `Current registry JSON: ${JSON.stringify(inventory)}` : 'Registry empty.';
+            const sortingContext = `Household sorting rules JSON: ${JSON.stringify(getAssetDatabase())}. Unknown-item fallback: ${localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge'}. Infer missing quantity as 1 and infer location/category/shelf life from these rules or ordinary food-storage knowledge; do not ask for clarification when a reasonable choice exists.`;
+            const inventoryContext = `${inventory.length > 0 ? `Current registry JSON: ${JSON.stringify(inventory)}` : 'Registry empty.'}\n${sortingContext}`;
             const deviceContext = `Device date/time: ${getDeviceNow().toString()}. Device ISO timestamp: ${getDeviceNow().toISOString()}.`;
 
             const systemPrompt = VIKI_PERSONALITY.getSystemPrompt({ inventoryContext, deviceContext });
@@ -2279,6 +2176,8 @@
         document.getElementById('exportDataButton').addEventListener('click', exportData);
         document.getElementById('importDataButton').addEventListener('click', () => document.getElementById('importDataInput').click());
         document.getElementById('importDataInput').addEventListener('change', (e) => importDataFromFile(e.target.files[0]));
+        document.getElementById('saveRulesButton').addEventListener('click', saveSortingRules);
+        document.getElementById('resetRulesButton').addEventListener('click', resetSortingRules);
         ['inventorySearch', 'categoryFilter', 'statusFilter', 'quantityFilter', 'ageFilter', 'daysMinFilter', 'daysMaxFilter', 'addedAfterFilter', 'addedBeforeFilter', 'inventorySort'].forEach(id => {
             document.getElementById(id).addEventListener('input', renderInventory);
             document.getElementById(id).addEventListener('change', renderInventory);
