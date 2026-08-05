@@ -12,6 +12,8 @@ VIKI derives the current date and time from the browser device with `new Date()`
 
 ## Filters and sorting
 
+Use the arrow beside **Search assets // Filters** to minimize or restore the complete search and filter area without clearing the active view.
+
 The asset registry can be filtered by:
 
 - Location: all, fridge, freezer, or cupboard.
@@ -54,10 +56,10 @@ VIKI executes browser speech-recognition transcripts immediately, so voice captu
 
 New items do not require a location or quantity. Quantity defaults to one, while location, category, and shelf life are inferred from exact food rules, configurable tags, built-in food-storage heuristics, and finally the configured unknown-item location.
 
-Open **Sorting & Tag Settings** in the configuration section to edit rules in this format:
+Open **Settings** in the application header to edit the AI configuration, tag matching priority, unknown-item fallback, data tools, and preset rules in this format:
 
 ```text
-food name | tag one, tag two | fridge | 7
+food name | tag one, tag two | category | fridge | 7
 ```
 
-Rules and the unknown-item default are stored locally in the browser and are included in the context sent to the configured AI.
+The matching priority can prefer exact food names or tags. Preset names, tags, categories, locations, shelf lives, matching logic, and the unknown-item default are stored locally in the browser and are included in the context sent to the configured AI.
