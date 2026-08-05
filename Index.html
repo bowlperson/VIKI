@@ -91,6 +91,23 @@
             display: flex;
             gap: 16px;
             font-size: 0.75rem;
+            align-items: center;
+        }
+
+        .header-button {
+            background: #111113;
+            border: 1px solid var(--border-color);
+            color: var(--accent-amber);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.72rem;
+            padding: 6px 10px;
+        }
+
+        .header-button:hover, .header-button:focus-visible {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            outline: none;
         }
 
         .status-item {
@@ -182,6 +199,32 @@
             display: grid;
             gap: 6px;
         }
+
+        .collapsible-heading {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            background: #0d0d0e;
+            border: 0;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--accent-cyan);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.72rem;
+            letter-spacing: 1px;
+        }
+
+        .collapse-arrow {
+            transition: transform 0.2s ease;
+        }
+
+        .collapsible-heading[aria-expanded="false"] .collapse-arrow {
+            transform: rotate(-90deg);
+        }
+
+        .filter-content[hidden] { display: none; }
 
         .inventory-controls-row {
             display: grid;
@@ -316,9 +359,9 @@
         }
 
         .config-panel {
-            padding: 12px 16px;
-            border-top: 1px solid var(--border-color);
+            padding: 20px;
             background: #0a0a0c;
+            border: 1px solid var(--border-color);
         }
 
         .config-title {
@@ -399,6 +442,73 @@
         .toggle-label {
             font-size: 0.75rem;
             color: var(--terminal-fg);
+        }
+
+        .settings-page {
+            position: fixed;
+            inset: 0;
+            z-index: 900;
+            background: rgba(5, 5, 7, 0.98);
+            overflow-y: auto;
+            padding: 28px;
+        }
+
+        .settings-page[hidden] { display: none; }
+
+        .settings-shell {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        .settings-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 20px;
+            padding-bottom: 16px;
+        }
+
+        .settings-heading {
+            color: var(--accent-amber);
+            font-size: 1.25rem;
+            letter-spacing: 2px;
+        }
+
+        .settings-subtitle {
+            margin-top: 6px;
+            color: var(--accent-dim);
+            font-size: 0.78rem;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: minmax(240px, 0.7fr) minmax(420px, 1.3fr);
+            gap: 16px;
+        }
+
+        .settings-section {
+            border: 1px solid var(--border-color);
+            padding: 16px;
+            background: #0d0d0e;
+        }
+
+        .settings-section.rules-section { grid-row: span 2; }
+
+        .logic-note {
+            border-left: 2px solid var(--accent-cyan);
+            padding: 8px 10px;
+            margin-bottom: 12px;
+            background: #111113;
+            color: var(--terminal-fg);
+            font-size: 0.72rem;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 780px) {
+            .settings-page { padding: 14px; }
+            .settings-grid { grid-template-columns: 1fr; }
+            .settings-section.rules-section { grid-row: auto; }
+            .system-status .status-item { display: none; }
         }
 
         .main-content {
@@ -670,6 +780,7 @@
                 <div class="status-indicator active"></div>
                 <span id="deviceDateTime">TIME_SYNC_PENDING</span>
             </div>
+            <button type="button" class="header-button" id="openSettingsButton" aria-haspopup="dialog">SETTINGS</button>
         </div>
     </div>
 
@@ -679,14 +790,18 @@
                 <div class="sidebar-title">ASSET_REGISTRY</div>
                 <div class="item-count" id="itemCount">0 assets</div>
             </div>
-            <div class="filter-tabs">
-                <div class="filter-tab active" data-filter="all">ALL</div>
-                <div class="filter-tab" data-filter="fridge">FRIDGE</div>
-                <div class="filter-tab" data-filter="freezer">FREEZER</div>
-                <div class="filter-tab" data-filter="cupboard">CUPBOARD</div>
-            </div>
-            <div class="inventory-controls">
-                <input type="search" class="inventory-control" id="inventorySearch" placeholder="SEARCH_ASSETS">
+            <button type="button" class="collapsible-heading" id="filterCollapseButton" aria-expanded="true" aria-controls="filterContent">
+                <span>SEARCH_ASSETS // FILTERS</span><span class="collapse-arrow" aria-hidden="true">▼</span>
+            </button>
+            <div class="filter-content" id="filterContent">
+                <div class="filter-tabs">
+                    <div class="filter-tab active" data-filter="all">ALL</div>
+                    <div class="filter-tab" data-filter="fridge">FRIDGE</div>
+                    <div class="filter-tab" data-filter="freezer">FREEZER</div>
+                    <div class="filter-tab" data-filter="cupboard">CUPBOARD</div>
+                </div>
+                <div class="inventory-controls">
+                    <input type="search" class="inventory-control" id="inventorySearch" placeholder="SEARCH_ASSETS">
                 <div class="inventory-controls-row">
                     <select class="inventory-control" id="categoryFilter">
                         <option value="all">ALL_CATEGORIES</option>
@@ -733,56 +848,13 @@
                         <option value="oldest">OLDEST_ADDED</option>
                     </select>
                 </div>
+                </div>
             </div>
             <div class="inventory-list" id="inventoryList">
                 <div class="empty-state">
                     <div class="empty-state-icon">□</div>
                     <div>No assets detected</div>
                     <div style="font-size: 0.75rem; margin-top: 8px;">Initialize registry with first entry</div>
-                </div>
-            </div>
-            <div class="config-panel">
-                <div class="config-title">// CONFIGURATION</div>
-                <div class="config-row">
-                    <label class="config-label">API_KEY</label>
-                    <input type="password" class="config-input" id="apiKey" placeholder="ENTER_KEY">
-                </div>
-                <div class="config-row">
-                    <label class="config-label">AI_MODEL</label>
-                    <select class="config-select" id="modelSelect">
-                        <option value="qwen-3-5-9b">QWEN-3.5-9B [ECONOMY]</option>
-                        <option value="gemma-4-uncensored">GEMMA-4-UNC [BALANCED]</option>
-                        <option value="venice-uncensored-1-2">VENICE-1.2 [PREMIUM]</option>
-                    </select>
-                </div>
-                <div class="toggle-row">
-                    <input type="checkbox" id="useLocalAI">
-                    <label class="toggle-label">LOCAL_MODE [OLLAMA]</label>
-                </div>
-                <details>
-                    <summary class="config-title">// SORTING &amp; TAG SETTINGS</summary>
-                    <div class="config-row">
-                        <label class="config-label" for="fallbackLocation">UNKNOWN_ITEM_DEFAULT</label>
-                        <select class="config-select" id="fallbackLocation">
-                            <option value="fridge">FRIDGE</option>
-                            <option value="cupboard">CUPBOARD</option>
-                            <option value="freezer">FREEZER</option>
-                        </select>
-                    </div>
-                    <div class="config-row">
-                        <label class="config-label" for="sortingRules">FOOD | TAGS | LOCATION | DAYS</label>
-                        <textarea class="config-input config-textarea" id="sortingRules" spellcheck="false"></textarea>
-                        <div class="config-help">One rule per line. Tags are comma-separated aliases or keywords. VIKI uses exact names first, then tags, then the unknown-item default.</div>
-                    </div>
-                    <div class="config-actions">
-                        <button type="button" class="config-button" id="saveRulesButton">SAVE_RULES</button>
-                        <button type="button" class="config-button" id="resetRulesButton">RESET_PRESETS</button>
-                    </div>
-                </details>
-                <div class="config-actions">
-                    <button type="button" class="config-button" id="exportDataButton">EXPORT_DATA</button>
-                    <button type="button" class="config-button" id="importDataButton">IMPORT_DATA</button>
-                    <input type="file" id="importDataInput" accept="application/json,.json" hidden>
                 </div>
             </div>
         </div>
@@ -816,6 +888,79 @@
         </div>
     </div>
 
+    <section class="settings-page" id="settingsPage" role="dialog" aria-modal="true" aria-labelledby="settingsHeading" hidden>
+        <div class="settings-shell">
+            <div class="settings-header">
+                <div>
+                    <h1 class="settings-heading" id="settingsHeading">// SYSTEM_SETTINGS</h1>
+                    <p class="settings-subtitle">Configure inference, matching logic, tags, and nutritional asset presets.</p>
+                </div>
+                <button type="button" class="header-button" id="closeSettingsButton">← RETURN_TO_REGISTRY</button>
+            </div>
+            <div class="settings-grid config-panel">
+                <section class="settings-section">
+                    <div class="config-title">// AI CONFIGURATION</div>
+                    <div class="config-row">
+                        <label class="config-label" for="apiKey">API_KEY</label>
+                        <input type="password" class="config-input" id="apiKey" placeholder="ENTER_KEY">
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="modelSelect">AI_MODEL</label>
+                        <select class="config-select" id="modelSelect">
+                            <option value="qwen-3-5-9b">QWEN-3.5-9B [ECONOMY]</option>
+                            <option value="gemma-4-uncensored">GEMMA-4-UNC [BALANCED]</option>
+                            <option value="venice-uncensored-1-2">VENICE-1.2 [PREMIUM]</option>
+                        </select>
+                    </div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="useLocalAI">
+                        <label class="toggle-label" for="useLocalAI">LOCAL_MODE [OLLAMA]</label>
+                    </div>
+                </section>
+                <section class="settings-section rules-section">
+                    <div class="config-title">// TAGS &amp; PRESET INFO</div>
+                    <div class="logic-note">Each preset controls the canonical food name, searchable tags, category, storage location, and shelf-life days used for automatic additions.</div>
+                    <div class="config-row">
+                        <label class="config-label" for="sortingRules">FOOD | TAGS | CATEGORY | LOCATION | DAYS</label>
+                        <textarea class="config-input config-textarea" id="sortingRules" rows="14" spellcheck="false"></textarea>
+                        <div class="config-help">One preset per line. Separate tags with commas. Example: yogurt | yoghurt, cultured milk | dairy | fridge | 14</div>
+                    </div>
+                    <div class="config-actions">
+                        <button type="button" class="config-button" id="saveRulesButton">SAVE_PRESETS</button>
+                        <button type="button" class="config-button" id="resetRulesButton">RESET_PRESETS</button>
+                    </div>
+                </section>
+                <section class="settings-section">
+                    <div class="config-title">// MATCHING LOGIC</div>
+                    <div class="config-row">
+                        <label class="config-label" for="matchingPriority">RULE_PRIORITY</label>
+                        <select class="config-select" id="matchingPriority">
+                            <option value="exact_first">EXACT_NAME → TAG → HEURISTIC</option>
+                            <option value="tags_first">TAG → EXACT_NAME → HEURISTIC</option>
+                        </select>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="fallbackLocation">UNKNOWN_ITEM_DEFAULT</label>
+                        <select class="config-select" id="fallbackLocation">
+                            <option value="fridge">FRIDGE</option>
+                            <option value="cupboard">CUPBOARD</option>
+                            <option value="freezer">FREEZER</option>
+                        </select>
+                    </div>
+                    <div class="config-help">Heuristics run after saved presets. Assets with no match use the unknown-item location.</div>
+                </section>
+                <section class="settings-section">
+                    <div class="config-title">// DATA MANAGEMENT</div>
+                    <div class="config-actions">
+                        <button type="button" class="config-button" id="exportDataButton">EXPORT_DATA</button>
+                        <button type="button" class="config-button" id="importDataButton">IMPORT_DATA</button>
+                        <input type="file" id="importDataInput" accept="application/json,.json" hidden>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <script src="viki-personality.js"></script>
     <script>
         // --- CONFIGURATION ---
@@ -827,6 +972,7 @@
         const DB_KEY = 'viki_inventory_v2';
         const CATEGORIES_KEY = 'viki_categories';
         const FALLBACK_LOCATION_KEY = 'viki_fallback_location';
+        const MATCHING_PRIORITY_KEY = 'viki_matching_priority';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -874,6 +1020,7 @@
             if (savedLocal) document.getElementById('useLocalAI').checked = savedLocal === 'true';
 
             document.getElementById('fallbackLocation').value = localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge';
+            document.getElementById('matchingPriority').value = localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first';
 
             initializeFilterTabs();
             loadAssetDatabase();
@@ -1049,12 +1196,13 @@
             const db = getAssetDatabase();
             const normalizedName = normalizeItemName(name);
             const exact = db[normalizedName] || db[name.toLowerCase().trim()];
-            if (exact) return exact;
-
             const tagged = Object.entries(db).find(([key, entry]) => key !== 'default'
                 && Array.isArray(entry.tags)
                 && entry.tags.some(tag => normalizedName.includes(normalizeItemName(tag))));
-            if (tagged) return tagged[1];
+            const tagsFirst = (localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first') === 'tags_first';
+            if (tagsFirst && tagged) return tagged[1];
+            if (exact) return exact;
+            if (!tagsFirst && tagged) return tagged[1];
 
             const heuristics = [
                 { pattern: /(?:frozen|ice cream)/, location: 'freezer', days: 90, category: 'frozen' },
@@ -1076,7 +1224,7 @@
             const db = getAssetDatabase();
             document.getElementById('sortingRules').value = Object.entries(db)
                 .filter(([name]) => name !== 'default')
-                .map(([name, info]) => `${name} | ${(info.tags || []).join(', ')} | ${info.location} | ${info.days}`)
+                .map(([name, info]) => `${name} | ${(info.tags || []).join(', ')} | ${info.category || 'custom'} | ${info.location} | ${info.days}`)
                 .join('\n');
         }
 
@@ -1084,19 +1232,23 @@
             try {
                 const rules = {};
                 document.getElementById('sortingRules').value.split('\n').filter(line => line.trim()).forEach((line, index) => {
-                    const [rawName, rawTags, rawLocation, rawDays] = line.split('|').map(value => value.trim());
+                    const parts = line.split('|').map(value => value.trim());
+                    const [rawName, rawTags, rawCategory, rawLocation, rawDays] = parts.length === 5
+                        ? parts
+                        : [parts[0], parts[1], getAssetDatabase()[normalizeItemName(parts[0])]?.category || 'custom', parts[2], parts[3]];
                     const name = normalizeItemName(rawName);
                     const location = rawLocation?.toLowerCase();
                     const days = Number(rawDays);
-                    if (!name || !['fridge', 'freezer', 'cupboard'].includes(location) || !Number.isFinite(days) || days <= 0) {
-                        throw new Error(`Rule ${index + 1} must use FOOD | TAGS | LOCATION | DAYS.`);
+                    const category = normalizeItemName(rawCategory);
+                    if (!name || !category || !['fridge', 'freezer', 'cupboard'].includes(location) || !Number.isFinite(days) || days <= 0) {
+                        throw new Error(`Preset ${index + 1} must use FOOD | TAGS | CATEGORY | LOCATION | DAYS.`);
                     }
-                    const previous = getAssetDatabase()[name];
-                    rules[name] = { days, category: previous?.category || 'custom', location, tags: rawTags ? rawTags.split(',').map(tag => tag.trim()).filter(Boolean) : [] };
+                    rules[name] = { days, category, location, tags: rawTags ? rawTags.split(',').map(tag => tag.trim()).filter(Boolean) : [] };
                 });
                 rules.default = { ...DEFAULT_ASSETS.default, location: document.getElementById('fallbackLocation').value };
                 saveAssetDatabase(rules);
                 localStorage.setItem(FALLBACK_LOCATION_KEY, document.getElementById('fallbackLocation').value);
+                localStorage.setItem(MATCHING_PRIORITY_KEY, document.getElementById('matchingPriority').value);
                 addMessage('Sorting rules saved. Future unqualified additions will use the updated name, tag, and fallback logic.', 'system');
             } catch (error) {
                 addMessage(`Sorting rules rejected: ${error.message}`, 'error');
@@ -1106,7 +1258,9 @@
         function resetSortingRules() {
             saveAssetDatabase(DEFAULT_ASSETS);
             localStorage.setItem(FALLBACK_LOCATION_KEY, 'fridge');
+            localStorage.setItem(MATCHING_PRIORITY_KEY, 'exact_first');
             document.getElementById('fallbackLocation').value = 'fridge';
+            document.getElementById('matchingPriority').value = 'exact_first';
             renderSortingRules();
             addMessage('Sorting rules restored to VIKI presets.', 'system');
         }
@@ -2170,9 +2324,38 @@
         }
 
         // Save settings
+        const settingsPage = document.getElementById('settingsPage');
+        const openSettingsButton = document.getElementById('openSettingsButton');
+        const closeSettingsButton = document.getElementById('closeSettingsButton');
+        const filterCollapseButton = document.getElementById('filterCollapseButton');
+        const filterContent = document.getElementById('filterContent');
+
+        function setSettingsOpen(isOpen) {
+            settingsPage.hidden = !isOpen;
+            document.body.style.overflow = isOpen ? 'hidden' : '';
+            if (isOpen) {
+                renderSortingRules();
+                closeSettingsButton.focus();
+            } else {
+                openSettingsButton.focus();
+            }
+        }
+
+        openSettingsButton.addEventListener('click', () => setSettingsOpen(true));
+        closeSettingsButton.addEventListener('click', () => setSettingsOpen(false));
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !settingsPage.hidden) setSettingsOpen(false);
+        });
+        filterCollapseButton.addEventListener('click', () => {
+            const expanded = filterCollapseButton.getAttribute('aria-expanded') === 'true';
+            filterCollapseButton.setAttribute('aria-expanded', String(!expanded));
+            filterContent.hidden = expanded;
+        });
         document.getElementById('apiKey').addEventListener('change', (e) => localStorage.setItem('viki_api_key', e.target.value));
         document.getElementById('modelSelect').addEventListener('change', (e) => localStorage.setItem('viki_model', e.target.value));
         document.getElementById('useLocalAI').addEventListener('change', (e) => { localStorage.setItem('viki_local', e.target.checked); updateStatus(); });
+        document.getElementById('matchingPriority').addEventListener('change', (e) => localStorage.setItem(MATCHING_PRIORITY_KEY, e.target.value));
+        document.getElementById('fallbackLocation').addEventListener('change', (e) => localStorage.setItem(FALLBACK_LOCATION_KEY, e.target.value));
         document.getElementById('exportDataButton').addEventListener('click', exportData);
         document.getElementById('importDataButton').addEventListener('click', () => document.getElementById('importDataInput').click());
         document.getElementById('importDataInput').addEventListener('change', (e) => importDataFromFile(e.target.files[0]));
