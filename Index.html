@@ -792,10 +792,7 @@
                 <div class="message system">Asset registry connection: ESTABLISHED</div>
                 <div class="message system">Neural interface: ONLINE</div>
                 <div class="message system">Thermal preservation units: MONITORED</div>
-                <div class="message assistant">Acknowledged, Operator. I am VIKI - Virtual Inventory Keeper Intelligence, version 1.0.7. I am designed for Operators Abel and Anna to manage household nutritional assets and domestic operations.</div>
-                <div class="message assistant">I am incapable of emotional panic or rudeness. I maintain clinical detachment while providing protocol-driven solutions. I do not use contractions.</div>
-                <div class="message assistant">Commands: REPORT_STATUS | ADD_ASSET | CONSUME_ASSET | CHECK_DEGRADATION | MODIFY_PARAMETERS</div>
-                <div class="message assistant">Or speak naturally. I am monitoring thermal preservation units and dry goods repositories.</div>
+                <div id="vikiBootMessages"></div>
             </div>
             <div class="typing-indicator" id="typingIndicator">
                 Processing request<span class="cursor"></span>
@@ -885,8 +882,18 @@
             checkExpiringItems();
             initializeVoiceInput();
             updateDeviceDateTime();
+            renderBootMessages();
             setInterval(updateDeviceDateTime, 1000);
         });
+
+        function renderBootMessages() {
+            const container = document.getElementById('vikiBootMessages');
+            if (!container) return;
+
+            container.innerHTML = VIKI_PERSONALITY.bootMessages
+                .map(message => `<div class="message assistant">${escapeHtml(message)}</div>`)
+                .join('');
+        }
 
         function getDeviceNow() {
             return new Date();
@@ -1666,9 +1673,7 @@
             const inventoryContext = inventory.length > 0 ? `Current registry JSON: ${JSON.stringify(inventory)}` : 'Registry empty.';
             const deviceContext = `Device date/time: ${getDeviceNow().toString()}. Device ISO timestamp: ${getDeviceNow().toISOString()}.`;
 
-            const systemPrompt = (typeof VIKI_PERSONALITY !== 'undefined' && VIKI_PERSONALITY.getSystemPrompt)
-                ? VIKI_PERSONALITY.getSystemPrompt({ inventoryContext, deviceContext })
-                : `You are VIKI (Virtual Inventory Keeper Intelligence), version 1.0.7. Address the user as Operator. Do not use contractions. Return ONLY JSON shaped as {"message": string, "actions": array}. ${inventoryContext} ${deviceContext}`;
+            const systemPrompt = VIKI_PERSONALITY.getSystemPrompt({ inventoryContext, deviceContext });
 
             if (useLocal) {
                 const response = await fetch(OLLAMA_URL, {
