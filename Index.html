@@ -176,6 +176,34 @@
             color: var(--accent-cyan);
         }
         
+        .inventory-controls {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+            display: grid;
+            gap: 6px;
+        }
+        
+        .inventory-controls-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        
+        .inventory-control {
+            width: 100%;
+            padding: 6px;
+            background: #0a0a0c;
+            border: 1px solid var(--border-color);
+            color: var(--terminal-fg);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.7rem;
+        }
+        
+        .inventory-control:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+        
         .inventory-list {
             flex: 1;
             overflow-y: auto;
@@ -609,10 +637,38 @@
                 <div class="item-count" id="itemCount">0 assets</div>
             </div>
             <div class="filter-tabs">
-                <div class="filter-tab active" onclick="filterInventory('all')">ALL</div>
-                <div class="filter-tab" onclick="filterInventory('fridge')">FRIDGE</div>
-                <div class="filter-tab" onclick="filterInventory('freezer')">FREEZER</div>
-                <div class="filter-tab" onclick="filterInventory('cupboard')">CUPBOARD</div>
+                <div class="filter-tab active" onclick="filterInventory('all', this)">ALL</div>
+                <div class="filter-tab" onclick="filterInventory('fridge', this)">FRIDGE</div>
+                <div class="filter-tab" onclick="filterInventory('freezer', this)">FREEZER</div>
+                <div class="filter-tab" onclick="filterInventory('cupboard', this)">CUPBOARD</div>
+            </div>
+            <div class="inventory-controls">
+                <input type="search" class="inventory-control" id="inventorySearch" placeholder="SEARCH_ASSETS">
+                <div class="inventory-controls-row">
+                    <select class="inventory-control" id="categoryFilter">
+                        <option value="all">ALL_CATEGORIES</option>
+                    </select>
+                    <select class="inventory-control" id="statusFilter">
+                        <option value="all">ALL_STATUS</option>
+                        <option value="fresh">FRESH</option>
+                        <option value="expiring">EXPIRING_SOON</option>
+                        <option value="expired">EXPIRED</option>
+                        <option value="hiddenExpired">HIDE_EXPIRED</option>
+                    </select>
+                </div>
+                <div class="inventory-controls-row">
+                    <select class="inventory-control" id="quantityFilter">
+                        <option value="all">ALL_QUANTITIES</option>
+                        <option value="low">LOW_QUANTITY</option>
+                    </select>
+                    <select class="inventory-control" id="inventorySort">
+                        <option value="expiration">EXPIRATION_SOONEST</option>
+                        <option value="name">NAME_A_Z</option>
+                        <option value="location">LOCATION</option>
+                        <option value="recent">RECENTLY_ADDED</option>
+                        <option value="quantity">QUANTITY</option>
+                    </select>
+                </div>
             </div>
             <div class="inventory-list" id="inventoryList">
                 <div class="empty-state">
@@ -892,19 +948,85 @@
             alert.classList.toggle('show', expiring.length > 0);
         }
         
-        function filterInventory(filter) {
+        function getInventoryControls() {
+            return {
+                search: (document.getElementById('inventorySearch')?.value || '').toLowerCase().trim(),
+                category: document.getElementById('categoryFilter')?.value || 'all',
+                status: document.getElementById('statusFilter')?.value || 'all',
+                quantity: document.getElementById('quantityFilter')?.value || 'all',
+                sort: document.getElementById('inventorySort')?.value || 'expiration'
+            };
+        }
+        
+        function getItemStatus(item) {
+            if (item.daysLeft <= 0) return 'expired';
+            if (item.daysLeft <= 3) return 'expiring';
+            return 'fresh';
+        }
+        
+        function updateCategoryFilter(items) {
+            const select = document.getElementById('categoryFilter');
+            if (!select) return;
+            const selected = select.value || 'all';
+            const categories = [...new Set(items.map(item => item.category || 'general'))].sort();
+            select.innerHTML = '<option value="all">ALL_CATEGORIES</option>' + categories.map(category => `<option value="${category}">${category.toUpperCase()}</option>`).join('');
+            select.value = categories.includes(selected) ? selected : 'all';
+        }
+        
+        function getVisibleInventoryItems() {
+            let items = getExpiringItems();
+            updateCategoryFilter(items);
+            const controls = getInventoryControls();
+            
+            if (currentFilter !== 'all') items = items.filter(i => i.location === currentFilter);
+            if (controls.search) items = items.filter(i => [i.name, i.category, i.location].some(value => (value || '').toLowerCase().includes(controls.search)));
+            if (controls.category !== 'all') items = items.filter(i => i.category === controls.category);
+            if (controls.status === 'hiddenExpired') items = items.filter(i => getItemStatus(i) !== 'expired');
+            else if (controls.status !== 'all') items = items.filter(i => getItemStatus(i) === controls.status);
+            if (controls.quantity === 'low') items = items.filter(i => Number(i.quantity) <= 1);
+            
+            const sorters = {
+                expiration: (a, b) => a.daysLeft - b.daysLeft || a.name.localeCompare(b.name),
+                name: (a, b) => a.name.localeCompare(b.name),
+                location: (a, b) => a.location.localeCompare(b.location) || a.name.localeCompare(b.name),
+                recent: (a, b) => new Date(b.lastAdded || b.addedDate) - new Date(a.lastAdded || a.addedDate),
+                quantity: (a, b) => a.quantity - b.quantity || a.name.localeCompare(b.name)
+            };
+            return items.sort(sorters[controls.sort] || sorters.expiration);
+        }
+        
+        function setInventoryControl(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = value;
+        }
+        
+        function setInventoryView({ location = null, search = null, category = null, status = null, quantity = null, sort = null } = {}) {
+            if (location) {
+                currentFilter = location;
+                document.querySelectorAll('.filter-tab').forEach(tab => {
+                    tab.classList.toggle('active', tab.textContent.toLowerCase() === location || (location === 'all' && tab.textContent.toLowerCase() === 'all'));
+                });
+            }
+            if (search !== null) setInventoryControl('inventorySearch', search);
+            if (category !== null) setInventoryControl('categoryFilter', category);
+            if (status !== null) setInventoryControl('statusFilter', status);
+            if (quantity !== null) setInventoryControl('quantityFilter', quantity);
+            if (sort !== null) setInventoryControl('inventorySort', sort);
+            renderInventory();
+        }
+        
+        function filterInventory(filter, tabEl = null) {
             currentFilter = filter;
             document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
-            event.target.classList.add('active');
+            if (tabEl) tabEl.classList.add('active');
             renderInventory();
         }
         
         function renderInventory() {
             const list = document.getElementById('inventoryList');
-            let items = getExpiringItems();
+            let items = getVisibleInventoryItems();
             const countEl = document.getElementById('itemCount');
-            
-            if (currentFilter !== 'all') items = items.filter(i => i.location === currentFilter);
             countEl.textContent = `${items.length} asset(s)`;
             
             if (items.length === 0) {
@@ -1024,8 +1146,51 @@
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
             
+            // Inventory view controls
+            const locationCommand = lower.match(/(?:show|display|filter)(?: only)?\s+(fridge|freezer|cupboard)(?:\s+(?:items|assets))?/i);
+            if (locationCommand) {
+                setInventoryView({ location: locationCommand[1] });
+                return { message: `Display parameters updated. Showing ${locationCommand[1].toUpperCase()} assets.` };
+            }
+            const categoryCommand = lower.match(/(?:show|display|filter)(?: only)?\s+([\w-]+)\s+(?:category|items|assets)/i);
+            if (categoryCommand && !['fridge', 'freezer', 'cupboard', 'all', 'low', 'expired'].includes(categoryCommand[1])) {
+                const category = categoryCommand[1];
+                setInventoryView({ category });
+                return { message: `Display parameters updated. Showing ${category.toUpperCase()} category assets.` };
+            }
+            if (lower.includes('show all') || lower.includes('clear filters') || lower.includes('reset filters')) {
+                setInventoryView({ location: 'all', search: '', category: 'all', status: 'all', quantity: 'all', sort: 'expiration' });
+                return { message: 'Display parameters reset. Showing all assets by expiration priority.' };
+            }
+            const searchCommand = lower.match(/(?:search|find|look for)\s+(?:for\s+)?([\w\s-]+)/i);
+            if (searchCommand) {
+                const query = searchCommand[1].replace(/\s+(?:items|assets)$/i, '').trim();
+                setInventoryView({ search: query });
+                return { message: `Search parameter updated. Query: ${query.toUpperCase()}.` };
+            }
+            if (lower.includes('hide expired')) {
+                setInventoryView({ status: 'hiddenExpired' });
+                return { message: 'Display parameters updated. Degraded assets hidden.' };
+            }
+            if (lower.includes('show expired')) {
+                setInventoryView({ status: 'expired' });
+                return { message: 'Display parameters updated. Showing degraded assets only.' };
+            }
+            if (lower.includes('show low') || lower.includes('low quantity') || lower.includes('low stock')) {
+                setInventoryView({ quantity: 'low' });
+                return { message: 'Display parameters updated. Showing low-quantity assets.' };
+            }
+            const sortCommand = lower.match(/sort(?:\s+(?:inventory|assets|items))?\s+by\s+(expiration|name|location|recent|recently added|quantity)/i);
+            if (sortCommand || lower.includes('sort by expiration')) {
+                const requestedSort = sortCommand ? sortCommand[1] : 'expiration';
+                const sortMap = { expiration: 'expiration', name: 'name', location: 'location', recent: 'recent', 'recently added': 'recent', quantity: 'quantity' };
+                const sort = sortMap[requestedSort] || 'expiration';
+                setInventoryView({ sort });
+                return { message: `Display parameters updated. Sorting by ${sort.replace('recent', 'recently added').toUpperCase()}.` };
+            }
+            
             // Add with fractions
-            const addMatch = lower.match(/(?:bought|got|purchased|added?)\\s+(?:(\\d+\\.?\\d*)|half|quarter)?\\s*(\\w+)(?:\\s+(?:to\\s+)?(fridge|freezer|cupboard))?/i);
+            const addMatch = lower.match(/(?:bought|got|purchased|added?)\s+(?:(\d+\.?\d*)|half|quarter)?\s*(\w+)(?:\s+(?:to\s+)?(fridge|freezer|cupboard))?/i);
             
             if (addMatch) {
                 let quantity = 1;
@@ -1059,10 +1224,10 @@
                 const location = specifiedLocation || assetInfo.location;
                 const result = addItem(item, quantity, location);
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days. Current status: ${result.details.daysLeft} days until degradation.` };
-n             }
+            }
             
             // Use with fractions
-            const useMatch = lower.match(/(?:used?|ate?|consumed?)\\s+(?:(\\d+\\.?\\d*)|half|quarter)?\\s*(?:of\\s+)?(?:the\\s+)?(\\w+)(?:\\s+from\\s+(fridge|freezer|cupboard))?/i);
+            const useMatch = lower.match(/(?:used?|ate?|consumed?)\s+(?:(\d+\.?\d*)|half|quarter)?\s*(?:of\s+)?(?:the\s+)?(\w+)(?:\s+from\s+(fridge|freezer|cupboard))?/i);
             
             if (useMatch) {
                 let quantity = 1;
@@ -1080,7 +1245,7 @@ n             }
             
             // Modify shelf life
             if ((lower.includes('change') || lower.includes('modify') || lower.includes('set')) && (lower.includes('expiration') || lower.includes('shelf life') || lower.includes('degradation'))) {
-                const itemMatch = text.match(/(\\w+)(?:\\s+(?:to|for)\\s+(\\d+))?/i);
+                const itemMatch = text.match(/(\w+)(?:\s+(?:to|for)\s+(\d+))?/i);
                 if (itemMatch) {
                     const item = itemMatch[1];
                     const newDays = itemMatch[2] ? parseInt(itemMatch[2]) : null;
@@ -1102,7 +1267,7 @@ n             }
             if (lower.includes('expiring') || lower.includes('degradation') || lower.includes('status')) {
                 const expiring = getExpiringItems().filter(i => i.daysLeft <= 3);
                 if (expiring.length === 0) return { message: "All nutritional assets within acceptable parameters. No immediate degradation detected." };
-                return { message: `CRITICAL ASSETS APPROACHING DEGRADATION:\\n${expiring.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\\n')}` };
+                return { message: `CRITICAL ASSETS APPROACHING DEGRADATION:\n${expiring.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\n')}` };
             }
             
             // Full inventory
@@ -1113,14 +1278,14 @@ n             }
                 const byLocation = {};
                 items.forEach(i => { if (!byLocation[i.location]) byLocation[i.location] = []; byLocation[i.location].push(i); });
                 
-                let output = "CURRENT ASSET REGISTRY:\\n";
+                let output = "CURRENT ASSET REGISTRY:\n";
                 for (const [loc, locItems] of Object.entries(byLocation)) {
-                    output += `\\n[${loc.toUpperCase()}]:\\n`;
+                    output += `\n[${loc.toUpperCase()}]:\n`;
                     output += locItems.map(i => {
                         const expiring = getExpiringItems().find(e => e.id === i.id);
                         const status = expiring.daysLeft <= 3 ? ' ⚠ DEGRADING' : '';
                         return `• ${i.name.toUpperCase()}: ${i.quantity} units | ${i.shelfLife}d timeline | T-${expiring.daysLeft}d${status}`;
-                    }).join('\\n');
+                    }).join('\n');
                 }
                 return { message: output };
             }
@@ -1130,11 +1295,11 @@ n             }
                 const items = getExpiringItems();
                 const oldItems = items.filter(i => { if (!i.lastUsed) return true; const daysSince = (Date.now() - new Date(i.lastUsed)) / (1000 * 60 * 60 * 24); return daysSince > 7; }).slice(0, 5);
                 if (oldItems.length === 0) return { message: "All assets within normal usage parameters. No neglected items detected." };
-                return { message: "NEGLECTED ASSETS DETECTED:\\n" + oldItems.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\\n') };
+                return { message: "NEGLECTED ASSETS DETECTED:\n" + oldItems.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\n') };
             }
             
             // Analyze specific item
-            const analyzeMatch = lower.match(/(?:analyze|check|tell me about|status of)\\s+(?:the\\s+)?(\\w+)/i);
+            const analyzeMatch = lower.match(/(?:analyze|check|tell me about|status of)\s+(?:the\s+)?(\w+)/i);
             if (analyzeMatch) {
                 const itemName = analyzeMatch[1];
                 const items = getInventory().filter(i => i.name.toLowerCase() === itemName.toLowerCase());
@@ -1142,10 +1307,10 @@ n             }
                 
                 const details = items.map(i => {
                     const expiring = getExpiringItems().find(e => e.id === i.id);
-                    return `${i.name.toUpperCase()}:\\n• Location: ${i.location.toUpperCase()}\\n• Quantity: ${i.quantity} units\\n• Category: ${i.category.toUpperCase()}\\n• Degradation timeline: ${i.shelfLife} days\\n• Time until degradation: ${expiring.daysLeft} days\\n• Added: ${new Date(i.addedDate).toLocaleDateString()}`;
-                }).join('\\n\\n');
+                    return `${i.name.toUpperCase()}:\n• Location: ${i.location.toUpperCase()}\n• Quantity: ${i.quantity} units\n• Category: ${i.category.toUpperCase()}\n• Degradation timeline: ${i.shelfLife} days\n• Time until degradation: ${expiring.daysLeft} days\n• Added: ${new Date(i.addedDate).toLocaleDateString()}`;
+                }).join('\n\n');
                 
-                return { message: `ASSET ANALYSIS:\\n\\n${details}` };
+                return { message: `ASSET ANALYSIS:\n\n${details}` };
             }
             
             return null;
@@ -1205,6 +1370,8 @@ CORE DIRECTIVES:
 
 9. FRACTIONAL UNITS: You support partial quantities (0.5 for half, 0.25 for quarter). Track these precisely.
 
+10. FUTURE AI ACTION PROTOCOL: When the Operator requests UI display changes, map phrases to structured inventory view actions when such a protocol is available. Examples: "show freezer items" sets location to freezer; "search milk" sets the search query to milk; "sort by expiration" sets sort to expiration soonest; "hide expired" sets expiration status to hiddenExpired. Equivalent actions may also target category filters, low-quantity filters, and sorts for name, location, recently added, or quantity.
+
 ${inventoryContext}
 
 Respond as VIKI. No contractions. Address as Operator. Technical framing. Clinical but helpful. Always specify location, degradation timeline, and quantity when discussing assets.`;
@@ -1249,6 +1416,10 @@ Respond as VIKI. No contractions. Address as Operator. Technical framing. Clinic
         document.getElementById('apiKey').addEventListener('change', (e) => localStorage.setItem('viki_api_key', e.target.value));
         document.getElementById('modelSelect').addEventListener('change', (e) => localStorage.setItem('viki_model', e.target.value));
         document.getElementById('useLocalAI').addEventListener('change', (e) => { localStorage.setItem('viki_local', e.target.checked); updateStatus(); });
+        ['inventorySearch', 'categoryFilter', 'statusFilter', 'quantityFilter', 'inventorySort'].forEach(id => {
+            document.getElementById(id).addEventListener('input', renderInventory);
+            document.getElementById(id).addEventListener('change', renderInventory);
+        });
     </script>
 </body>
 </html>
