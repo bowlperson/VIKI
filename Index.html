@@ -496,7 +496,7 @@
             border-bottom-color: var(--accent-cyan);
         }
         
-        .send-btn {
+        .send-btn, .mic-btn {
             background: transparent;
             border: 1px solid var(--accent-amber);
             color: var(--accent-amber);
@@ -507,9 +507,72 @@
             transition: all 0.2s;
         }
         
-        .send-btn:hover {
+        .send-btn:hover, .mic-btn:hover:not(:disabled) {
             background: var(--accent-amber);
             color: #000;
+        }
+
+        .mic-btn {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            min-width: 44px;
+            padding: 6px 10px;
+        }
+
+        .mic-btn.listening {
+            background: var(--accent-cyan);
+            color: #000;
+            box-shadow: 0 0 8px var(--accent-cyan);
+        }
+
+        .mic-btn.processing {
+            border-color: var(--accent-amber);
+            color: var(--accent-amber);
+        }
+
+        .mic-btn.denied, .mic-btn.unsupported {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+            cursor: not-allowed;
+            opacity: 0.75;
+        }
+
+        .voice-status {
+            min-height: 18px;
+            margin-top: 8px;
+            color: var(--accent-dim);
+            font-size: 0.75rem;
+        }
+
+        .voice-status.listening { color: var(--accent-cyan); }
+        .voice-status.processing { color: var(--accent-amber); }
+        .voice-status.denied,
+        .voice-status.unsupported { color: var(--accent-red); }
+
+        .voice-confirm {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+            color: var(--accent-amber);
+            font-size: 0.75rem;
+        }
+
+        .voice-confirm.show { display: flex; }
+
+        .voice-confirm button {
+            background: #111113;
+            border: 1px solid var(--border-color);
+            color: var(--terminal-fg);
+            padding: 4px 10px;
+            font-family: 'Share Tech Mono', monospace;
+            cursor: pointer;
+        }
+
+        .voice-confirm button:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
         }
         
         .typing-indicator {
@@ -723,7 +786,14 @@
                 <div class="input-line">
                     <span class="input-prompt">></span>
                     <input type="text" id="messageInput" placeholder="Enter command or query..." onkeypress="handleKeyPress(event)">
+                    <button class="mic-btn" id="micButton" onclick="toggleVoiceInput()" aria-label="Start voice input" title="Start voice input">MIC</button>
                     <button class="send-btn" onclick="sendMessage()">EXECUTE</button>
+                </div>
+                <div class="voice-status" id="voiceStatus">VOICE: STANDBY</div>
+                <div class="voice-confirm" id="voiceConfirm">
+                    <span>VOICE TRANSCRIPT READY. CONFIRM EXECUTION?</span>
+                    <button onclick="confirmVoiceTranscript()">CONFIRM</button>
+                    <button onclick="cancelVoiceTranscript()">CANCEL</button>
                 </div>
             </div>
         </div>
@@ -766,6 +836,10 @@
         
         let currentFilter = 'all';
         let pendingQuestions = null;
+        let recognition = null;
+        let isListening = false;
+        let pendingVoiceTranscript = '';
+        let currentVoiceState = 'standby';
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -782,6 +856,7 @@
             updateStatus();
             renderInventory();
             checkExpiringItems();
+            initializeVoiceInput();
         });
         
         // Asset database management
@@ -1078,6 +1153,118 @@
         
         function handleKeyPress(e) {
             if (e.key === 'Enter') sendMessage();
+        }
+
+        // --- VOICE INPUT ---
+
+        function setVoiceState(state, message) {
+            currentVoiceState = state || 'standby';
+            const micButton = document.getElementById('micButton');
+            const voiceStatus = document.getElementById('voiceStatus');
+            const states = ['listening', 'processing', 'denied', 'unsupported'];
+
+            micButton.classList.remove(...states);
+            voiceStatus.classList.remove(...states);
+
+            if (state && state !== 'standby') {
+                micButton.classList.add(state);
+                voiceStatus.classList.add(state);
+            }
+
+            micButton.disabled = state === 'unsupported' || state === 'denied' || state === 'processing';
+            micButton.textContent = state === 'listening' ? 'STOP' : 'MIC';
+            micButton.setAttribute('aria-label', state === 'listening' ? 'Stop voice input' : 'Start voice input');
+            micButton.title = state === 'listening' ? 'Stop voice input' : 'Start voice input';
+            voiceStatus.textContent = `VOICE: ${message}`;
+        }
+
+        function initializeVoiceInput() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                setVoiceState('unsupported', 'UNSUPPORTED BROWSER');
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = navigator.language || 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                setVoiceState('listening', 'LISTENING');
+            };
+
+            recognition.onresult = (event) => {
+                setVoiceState('processing', 'PROCESSING TRANSCRIPT');
+                const transcript = Array.from(event.results)
+                    .map(result => result[0].transcript)
+                    .join(' ')
+                    .trim();
+                handleVoiceTranscript(transcript);
+            };
+
+            recognition.onerror = (event) => {
+                isListening = false;
+                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    setVoiceState('denied', 'PERMISSION DENIED');
+                    addMessage('Microphone permission denied. Enable browser microphone access to use voice input.', 'error');
+                } else {
+                    setVoiceState('standby', `ERROR: ${event.error.toUpperCase()}`);
+                }
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                if (!pendingVoiceTranscript && currentVoiceState !== 'denied') setVoiceState('standby', 'STANDBY');
+            };
+
+            setVoiceState('standby', 'READY');
+        }
+
+        function toggleVoiceInput() {
+            if (!recognition) return;
+            if (isListening) {
+                recognition.stop();
+                setVoiceState('processing', 'PROCESSING TRANSCRIPT');
+                return;
+            }
+
+            pendingVoiceTranscript = '';
+            document.getElementById('voiceConfirm').classList.remove('show');
+            try {
+                recognition.start();
+            } catch (error) {
+                setVoiceState('standby', 'READY');
+            }
+        }
+
+        function handleVoiceTranscript(transcript) {
+            const input = document.getElementById('messageInput');
+            if (!transcript) {
+                setVoiceState('standby', 'NO SPEECH DETECTED');
+                return;
+            }
+
+            pendingVoiceTranscript = transcript;
+            input.value = transcript;
+            document.getElementById('voiceConfirm').classList.add('show');
+            setVoiceState('standby', 'AWAITING CONFIRMATION');
+        }
+
+        function confirmVoiceTranscript() {
+            if (!pendingVoiceTranscript) return;
+            document.getElementById('voiceConfirm').classList.remove('show');
+            pendingVoiceTranscript = '';
+            setVoiceState('standby', 'READY');
+            sendMessage();
+        }
+
+        function cancelVoiceTranscript() {
+            pendingVoiceTranscript = '';
+            document.getElementById('messageInput').value = '';
+            document.getElementById('voiceConfirm').classList.remove('show');
+            setVoiceState('standby', 'READY');
         }
         
         // --- PENDING QUESTIONS SYSTEM ---
