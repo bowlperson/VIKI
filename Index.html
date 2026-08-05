@@ -890,9 +890,14 @@
             const container = document.getElementById('vikiBootMessages');
             if (!container) return;
 
-            container.innerHTML = VIKI_PERSONALITY.bootMessages
-                .map(message => `<div class="message assistant">${escapeHtml(message)}</div>`)
-                .join('');
+            const messages = VIKI_PERSONALITY.bootMessages.map(message => {
+                const messageEl = document.createElement('div');
+                messageEl.className = 'message assistant';
+                messageEl.textContent = message;
+                return messageEl;
+            });
+
+            container.replaceChildren(...messages);
         }
 
         function getDeviceNow() {
@@ -1098,7 +1103,19 @@
             if (!select) return;
             const selected = select.value || 'all';
             const categories = [...new Set(items.map(item => item.category || 'general'))].sort();
-            select.innerHTML = '<option value="all">ALL_CATEGORIES</option>' + categories.map(category => `<option value="${category}">${category.toUpperCase()}</option>`).join('');
+
+            const allOption = document.createElement('option');
+            allOption.value = 'all';
+            allOption.textContent = 'ALL_CATEGORIES';
+
+            const categoryOptions = categories.map(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category.toUpperCase();
+                return option;
+            });
+
+            select.replaceChildren(allOption, ...categoryOptions);
             select.value = categories.includes(selected) ? selected : 'all';
         }
 
@@ -1182,32 +1199,72 @@
             let items = getVisibleInventoryItems();
             const countEl = document.getElementById('itemCount');
             countEl.textContent = `${items.length} asset(s)`;
+            list.replaceChildren();
 
             if (items.length === 0) {
-                list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">□</div><div>No assets detected</div><div style="font-size: 0.75rem; margin-top: 8px;">Initialize registry with first entry</div></div>`;
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+
+                const emptyIcon = document.createElement('div');
+                emptyIcon.className = 'empty-state-icon';
+                emptyIcon.textContent = '□';
+
+                const emptyMessage = document.createElement('div');
+                emptyMessage.textContent = 'No assets detected';
+
+                const emptyHint = document.createElement('div');
+                emptyHint.style.fontSize = '0.75rem';
+                emptyHint.style.marginTop = '8px';
+                emptyHint.textContent = 'Initialize registry with first entry';
+
+                emptyState.append(emptyIcon, emptyMessage, emptyHint);
+                list.appendChild(emptyState);
                 return;
             }
 
-            list.innerHTML = items.map(item => {
+            items.forEach(item => {
                 let itemClass = '', timerClass = 'timer-ok', timerText = `T-${item.daysLeft}D`;
                 if (item.daysLeft <= 0) { itemClass = 'expired'; timerClass = 'timer-critical'; timerText = 'DEGRADED'; }
                 else if (item.daysLeft <= 3) { itemClass = 'expiring'; timerClass = 'timer-warning'; }
                 else if (item.daysLeft > 7) { itemClass = 'fresh'; }
 
-                return `
-                    <div class="inventory-item ${itemClass}" onclick="quickMessage('Analyze ${item.name}')">
-                        <div class="item-header">
-                            <div>
-                                <span class="item-location loc-${item.location}">${item.location.toUpperCase()}</span>
-                                <span class="item-name">${item.name.toUpperCase()}</span>
-                            </div>
-                            <div class="item-qty">${item.quantity} units</div>
-                        </div>
-                        <div class="item-meta">CAT: ${item.category.toUpperCase()} | ADDED: ${new Date(item.addedDate).toLocaleDateString()}</div>
-                        <div class="item-timer ${timerClass}">${timerText} | DEGRADATION: ${item.shelfLife} days</div>
-                    </div>
-                `;
-            }).join('');
+                const inventoryItem = document.createElement('div');
+                inventoryItem.classList.add('inventory-item');
+                if (itemClass) inventoryItem.classList.add(itemClass);
+                inventoryItem.addEventListener('click', () => quickMessage(`Analyze ${item.name}`));
+
+                const itemHeader = document.createElement('div');
+                itemHeader.className = 'item-header';
+
+                const identity = document.createElement('div');
+
+                const location = document.createElement('span');
+                location.classList.add('item-location', `loc-${item.location}`);
+                location.textContent = item.location.toUpperCase();
+
+                const name = document.createElement('span');
+                name.className = 'item-name';
+                name.textContent = item.name.toUpperCase();
+
+                identity.append(location, name);
+
+                const quantity = document.createElement('div');
+                quantity.className = 'item-qty';
+                quantity.textContent = `${item.quantity} units`;
+
+                itemHeader.append(identity, quantity);
+
+                const meta = document.createElement('div');
+                meta.className = 'item-meta';
+                meta.textContent = `CAT: ${item.category.toUpperCase()} | ADDED: ${new Date(item.addedDate).toLocaleDateString()}`;
+
+                const timer = document.createElement('div');
+                timer.classList.add('item-timer', timerClass);
+                timer.textContent = `${timerText} | DEGRADATION: ${item.shelfLife} days`;
+
+                inventoryItem.append(itemHeader, meta, timer);
+                list.appendChild(inventoryItem);
+            });
         }
 
         // --- CHAT INTERFACE ---
@@ -1216,7 +1273,12 @@
             const chatArea = document.getElementById('chatArea');
             const msg = document.createElement('div');
             msg.className = `message ${type}`;
-            msg.innerHTML = text.replace(/\n/g, '<br>');
+
+            String(text).split('\n').forEach((line, idx) => {
+                if (idx > 0) msg.appendChild(document.createElement('br'));
+                msg.appendChild(document.createTextNode(line));
+            });
+
             chatArea.appendChild(msg);
             chatArea.scrollTop = chatArea.scrollHeight;
         }
@@ -1350,18 +1412,43 @@
 
         function showPendingQuestions(questions, callback) {
             const container = document.getElementById('pendingQuestions');
-            let html = '<div class="pending-questions"><label>ADDITIONAL PARAMETERS REQUIRED:</label>';
+            const panel = document.createElement('div');
+            panel.className = 'pending-questions';
+
+            const label = document.createElement('label');
+            label.textContent = 'ADDITIONAL PARAMETERS REQUIRED:';
+            panel.appendChild(label);
 
             questions.forEach((q, idx) => {
                 if (q.type === 'select') {
-                    html += `<select id="pending-${idx}">${q.options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('')}</select>`;
+                    const select = document.createElement('select');
+                    select.id = `pending-${idx}`;
+
+                    q.options.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt.value;
+                        option.textContent = opt.label;
+                        select.appendChild(option);
+                    });
+
+                    panel.appendChild(select);
                 } else {
-                    html += `<input type="${q.type}" id="pending-${idx}" placeholder="${q.placeholder}" step="${q.step || 1}">`;
+                    const input = document.createElement('input');
+                    input.type = q.type;
+                    input.id = `pending-${idx}`;
+                    input.placeholder = q.placeholder;
+                    input.step = q.step || 1;
+                    panel.appendChild(input);
                 }
             });
 
-            html += '<button onclick="submitPendingQuestions()">CONFIRM PARAMETERS</button></div>';
-            container.innerHTML = html;
+            const submitButton = document.createElement('button');
+            submitButton.type = 'button';
+            submitButton.textContent = 'CONFIRM PARAMETERS';
+            submitButton.addEventListener('click', submitPendingQuestions);
+            panel.appendChild(submitButton);
+
+            container.replaceChildren(panel);
             pendingQuestions = { questions, callback };
         }
 
@@ -1371,7 +1458,7 @@
                 const val = document.getElementById(`pending-${idx}`).value;
                 return q.type === 'number' ? parseFloat(val) || 0 : val;
             });
-            document.getElementById('pendingQuestions').innerHTML = '';
+            document.getElementById('pendingQuestions').replaceChildren();
             pendingQuestions.callback(answers);
             pendingQuestions = null;
         }
