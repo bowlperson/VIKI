@@ -928,14 +928,37 @@
             if (!existing) saveAssetDatabase(DEFAULT_ASSETS);
         }
 
+        function normalizeItemName(name) {
+            const compact = (name || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, ' ')
+                .replace(/\b(?:the|a|an|some|my)\b/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            if (!compact) return '';
+
+            const words = compact.split(' ');
+            const last = words[words.length - 1];
+            const invariant = ['eggs', 'rice', 'pasta', 'flour', 'sugar'];
+            if (!invariant.includes(last) && last.length > 3) {
+                if (last.endsWith('ies')) words[words.length - 1] = `${last.slice(0, -3)}y`;
+                else if (last.endsWith('oes') || last.endsWith('ches') || last.endsWith('shes') || last.endsWith('xes') || last.endsWith('ses')) words[words.length - 1] = last.replace(/es$/, '');
+                else if (last.endsWith('s') && !last.endsWith('ss')) words[words.length - 1] = last.slice(0, -1);
+            }
+
+            return words.join(' ');
+        }
+
         function getAssetInfo(name) {
             const db = getAssetDatabase();
-            return db[name.toLowerCase().trim()] || db['default'];
+            const normalizedName = normalizeItemName(name);
+            return db[normalizedName] || db[name.toLowerCase().trim()] || db['default'];
         }
 
         function addAssetToDatabase(name, info) {
             const db = getAssetDatabase();
-            db[name.toLowerCase().trim()] = info;
+            db[normalizeItemName(name)] = info;
             saveAssetDatabase(db);
         }
 
@@ -973,9 +996,9 @@
             checkExpiringItems();
         }
 
-        function addItem(name, quantity = 1, location = null, customShelfLife = null, category = null) {
+        function addItem(name, quantity = 1, location = null, customShelfLife = null, category = null, unit = 'unit', note = '') {
             const items = getInventory();
-            const normalizedName = name.toLowerCase().trim();
+            const normalizedName = normalizeItemName(name);
             const assetInfo = getAssetInfo(normalizedName);
 
             const finalLocation = location || assetInfo.location || 'fridge';
@@ -988,11 +1011,15 @@
                 existing.quantity += quantity;
                 existing.lastAdded = getDeviceNow().toISOString();
                 if (customShelfLife) existing.shelfLife = customShelfLife;
+                if (unit) existing.unit = unit;
+                if (note) existing.note = note;
             } else {
                 items.push({
                     id: Date.now(),
-                    name: name,
+                    name: normalizedName,
                     quantity: quantity,
+                    unit: unit || 'unit',
+                    note: note || '',
                     category: finalCategory,
                     location: finalLocation,
                     addedDate: getDeviceNow().toISOString(),
@@ -1004,14 +1031,14 @@
 
             saveInventory(items);
             return {
-                message: `Added ${quantity} unit(s) of ${name} to ${finalLocation} registry.`,
-                details: { name, quantity, location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, daysLeft: finalShelfLife }
+                message: `Added ${quantity} ${unit || 'unit'}(s) of ${normalizedName} to ${finalLocation} registry.`,
+                details: { name: normalizedName, quantity, unit: unit || 'unit', note: note || '', location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, daysLeft: finalShelfLife }
             };
         }
 
         function useItem(name, quantity = 1, location = null) {
             const items = getInventory();
-            const normalizedName = name.toLowerCase().trim();
+            const normalizedName = normalizeItemName(name);
 
             let item;
             if (location) {
@@ -1021,7 +1048,7 @@
             }
 
             if (!item) return { error: `ERROR: ${name} not found in registry.` };
-            if (item.quantity < quantity) return { error: `ERROR: Insufficient quantity. Only ${item.quantity} unit(s) available in ${item.location}.` };
+            if (item.quantity < quantity) return { error: `ERROR: Insufficient quantity. Only ${item.quantity} ${item.unit || 'unit'}(s) available in ${item.location}.` };
 
             item.quantity -= quantity;
             item.lastUsed = getDeviceNow().toISOString();
@@ -1031,16 +1058,16 @@
                 const idx = items.indexOf(item);
                 items.splice(idx, 1);
                 saveInventory(items);
-                return { message: `Removed ${name} from ${item.location}. Stock depleted.`, details: { name, location: item.location, remaining: 0 } };
+                return { message: `Removed ${item.name} from ${item.location}. Stock depleted.`, details: { name, location: item.location, remaining: 0 } };
             }
 
             saveInventory(items);
-            return { message: `Consumed ${quantity} unit(s) of ${name} from ${item.location}. ${remaining} remaining.`, details: { name, location: item.location, remaining } };
+            return { message: `Consumed ${quantity} ${item.unit || 'unit'}(s) of ${item.name} from ${item.location}. ${remaining} remaining.`, details: { name, location: item.location, remaining } };
         }
 
         function modifyItem(name, newShelfLife, location = null) {
             const items = getInventory();
-            const normalizedName = name.toLowerCase().trim();
+            const normalizedName = normalizeItemName(name);
 
             let item;
             if (location) {
@@ -1250,7 +1277,7 @@
 
                 const quantity = document.createElement('div');
                 quantity.className = 'item-qty';
-                quantity.textContent = `${item.quantity} units`;
+                quantity.textContent = `${item.quantity} ${item.unit || 'unit'}(s)`;
 
                 itemHeader.append(identity, quantity);
 
@@ -1496,6 +1523,63 @@
             }
         }
 
+        function parseCommandQuantity(rawQuantity) {
+            if (!rawQuantity) return null;
+            const normalized = rawQuantity.toLowerCase().trim();
+            const words = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, dozen: 12 };
+            if (normalized === 'half') return 0.5;
+            if (normalized === 'quarter') return 0.25;
+            if (words[normalized]) return words[normalized];
+            const parsed = parseFloat(normalized);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function parseInventoryPhrase(text, mode) {
+            const locations = '(fridge|freezer|cupboard)';
+            const quantityPattern = '(\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|dozen|half|quarter)';
+            const unitPattern = '(cans?|bags?|boxes?|cartons?|pounds?|lbs?|ounces?|oz|grams?|g|liters?|litres?|l|bottles?|jars?|packages?|packs?)';
+            const clean = text.toLowerCase().replace(/\s+/g, ' ').trim();
+            let match;
+
+            if (mode === 'add') {
+                match = clean.match(new RegExp(`^(?:add|added|bought|got|purchased)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+(?:of\\s+)?)?(.+?)(?:\\s+to\\s+${locations})?(?:\\s+(?:with|note|notes?)\\s+(.+))?$`, 'i'));
+                if (!match) return null;
+                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null, note: (match[5] || '').trim() };
+            }
+
+            if (mode === 'use') {
+                match = clean.match(new RegExp(`^(?:use|used|ate|consume|consumed)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+)?(?:of\\s+)?(?:the\\s+)?(.+?)(?:\\s+from\\s+${locations})?$`, 'i'));
+                if (!match) return null;
+                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null };
+            }
+
+            if (mode === 'move') {
+                match = clean.match(new RegExp(`^(?:move|put|transfer)\\s+(?:the\\s+)?(.+?)\\s+to\\s+${locations}$`, 'i'));
+                if (!match) return null;
+                return { item: normalizeItemName(match[1]), location: match[2] || null };
+            }
+
+            return null;
+        }
+
+        function normalizeUnit(unit) {
+            const value = (unit || 'unit').toLowerCase().trim();
+            const aliases = { cans: 'can', bags: 'bag', boxes: 'box', cartons: 'carton', pounds: 'pound', lbs: 'pound', ounces: 'ounce', oz: 'ounce', grams: 'gram', g: 'gram', liters: 'liter', litres: 'liter', l: 'liter', bottles: 'bottle', jars: 'jar', packages: 'package', packs: 'pack' };
+            return aliases[value] || value;
+        }
+
+        function moveItem(name, destination) {
+            const items = getInventory();
+            const normalizedName = normalizeItemName(name);
+            const matches = items.filter(i => i.name.toLowerCase() === normalizedName);
+            if (matches.length === 0) return { error: `ERROR: ${name} not found in registry.` };
+            if (matches.length > 1) return { error: `ERROR: ${name} exists in multiple locations. Specify source location before transfer.` };
+            matches[0].location = destination;
+            matches[0].lastModified = getDeviceNow().toISOString();
+            saveInventory(items);
+            return { message: `Moved ${normalizedName} to ${destination} registry.` };
+        }
+
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
 
@@ -1542,65 +1626,79 @@
                 return { message: `Display parameters updated. Sorting by ${sort.replace('recent', 'recently added').toUpperCase()}.` };
             }
 
-            // Add with fractions
-            const addMatch = lower.match(/(?:bought|got|purchased|added?)\s+(?:(\d+\.?\d*)|half|quarter)?\s*(\w+)(?:\s+(?:to\s+)?(fridge|freezer|cupboard))?/i);
-
-            if (addMatch) {
-                let quantity = 1;
-                if (addMatch[1]) quantity = parseFloat(addMatch[1]);
-                else if (lower.includes('half')) quantity = 0.5;
-                else if (lower.includes('quarter')) quantity = 0.25;
-
-                const item = addMatch[2];
-                const specifiedLocation = addMatch[3];
+            // Phrase-aware add/use/move commands
+            const addParsed = parseInventoryPhrase(text, 'add');
+            if (addParsed) {
+                const item = addParsed.item;
                 const assetInfo = getAssetInfo(item);
+                const questions = [];
+                if (!addParsed.quantity) questions.push({ type: 'number', placeholder: 'QUANTITY', step: 0.25 });
+                if (!addParsed.location && (!assetInfo || assetInfo.category === 'general')) {
+                    questions.push({ type: 'select', options: [
+                        { value: 'fridge', label: 'THERMAL PRESERVATION UNIT (FRIDGE)' },
+                        { value: 'freezer', label: 'CRYOGENIC STORAGE (FREEZER)' },
+                        { value: 'cupboard', label: 'DRY GOODS REPOSITORY (CUPBOARD)' }
+                    ]});
+                    questions.push({ type: 'number', placeholder: 'DEGRADATION TIMELINE (days)', step: 1 });
+                }
 
-                // Unknown item - ask for details
-                if ((!assetInfo || assetInfo.category === 'general') && !specifiedLocation) {
-                    showPendingQuestions([
-                        { type: 'select', options: [
-                            { value: 'fridge', label: 'THERMAL PRESERVATION UNIT (FRIDGE)' },
-                            { value: 'freezer', label: 'CRYOGENIC STORAGE (FREEZER)' },
-                            { value: 'cupboard', label: 'DRY GOODS REPOSITORY (CUPBOARD)' }
-                        ]},
-                        { type: 'number', placeholder: 'DEGRADATION TIMELINE (days)', step: 1 }
-                    ], (answers) => {
-                        const location = answers[0];
-                        const shelfLife = answers[1] || 14;
-                        const result = addItem(item, quantity, location, shelfLife);
-                        addAssetToDatabase(item, { days: shelfLife, category: 'custom', location: location });
-                        addMessage(`New asset type registered: ${item.toUpperCase()}. ${result.message} Location: ${location.toUpperCase()}. Degradation timeline: ${shelfLife} days.`, 'assistant');
+                if (questions.length > 0) {
+                    showPendingQuestions(questions, (answers) => {
+                        let answerIndex = 0;
+                        const quantity = addParsed.quantity || answers[answerIndex++] || 1;
+                        const needsNewAssetDetails = !addParsed.location && (!assetInfo || assetInfo.category === 'general');
+                        const location = addParsed.location || (needsNewAssetDetails ? answers[answerIndex++] : assetInfo.location);
+                        const shelfLife = needsNewAssetDetails ? (answers[answerIndex++] || 14) : null;
+                        const result = addItem(item, quantity, location, shelfLife, null, addParsed.unit, addParsed.note);
+                        if (shelfLife) addAssetToDatabase(item, { days: shelfLife, category: 'custom', location });
+                        addMessage(`${result.message} Location: ${result.details.location.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.`, 'assistant');
                     });
                     return { type: 'pending' };
                 }
 
-                const location = specifiedLocation || assetInfo.location;
-                const result = addItem(item, quantity, location);
+                const result = addItem(item, addParsed.quantity, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note);
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days. Current status: ${result.details.daysLeft} days until degradation.` };
             }
 
-            // Use with fractions
-            const useMatch = lower.match(/(?:used?|ate?|consumed?)\s+(?:(\d+\.?\d*)|half|quarter)?\s*(?:of\s+)?(?:the\s+)?(\w+)(?:\s+from\s+(fridge|freezer|cupboard))?/i);
+            const useParsed = parseInventoryPhrase(text, 'use');
+            if (useParsed) {
+                if (!useParsed.quantity) {
+                    showPendingQuestions([{ type: 'number', placeholder: 'QUANTITY USED', step: 0.25 }], (answers) => {
+                        const result = useItem(useParsed.item, answers[0] || 1, useParsed.location);
+                        addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
+                    });
+                    return { type: 'pending' };
+                }
 
-            if (useMatch) {
-                let quantity = 1;
-                if (useMatch[1]) quantity = parseFloat(useMatch[1]);
-                else if (lower.includes('half')) quantity = 0.5;
-                else if (lower.includes('quarter')) quantity = 0.25;
+                const result = useItem(useParsed.item, useParsed.quantity, useParsed.location);
+                if (result.error) return { message: result.error, error: true };
+                return { message: result.message };
+            }
 
-                const item = useMatch[2];
-                const location = useMatch[3];
+            const moveParsed = parseInventoryPhrase(text, 'move');
+            if (moveParsed) {
+                if (!moveParsed.location) {
+                    showPendingQuestions([{ type: 'select', options: [
+                        { value: 'fridge', label: 'THERMAL PRESERVATION UNIT (FRIDGE)' },
+                        { value: 'freezer', label: 'CRYOGENIC STORAGE (FREEZER)' },
+                        { value: 'cupboard', label: 'DRY GOODS REPOSITORY (CUPBOARD)' }
+                    ]}], (answers) => {
+                        const result = moveItem(moveParsed.item, answers[0]);
+                        addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
+                    });
+                    return { type: 'pending' };
+                }
 
-                const result = useItem(item, quantity, location);
+                const result = moveItem(moveParsed.item, moveParsed.location);
                 if (result.error) return { message: result.error, error: true };
                 return { message: result.message };
             }
 
             // Modify shelf life
             if ((lower.includes('change') || lower.includes('modify') || lower.includes('set')) && (lower.includes('expiration') || lower.includes('shelf life') || lower.includes('degradation'))) {
-                const itemMatch = text.match(/(\w+)(?:\s+(?:to|for)\s+(\d+))?/i);
+                const itemMatch = lower.match(/(?:for|of)\s+(.+?)\s+(?:to|for)\s+(\d+)/i) || lower.match(/(?:change|modify|set)\s+(.+?)(?:\s+(?:expiration|shelf life|degradation))?(?:\s+(?:to|for)\s+(\d+))?$/i);
                 if (itemMatch) {
-                    const item = itemMatch[1];
+                    const item = normalizeItemName(itemMatch[1].replace(/\b(?:expiration|shelf life|degradation)\b/g, ''));
                     const newDays = itemMatch[2] ? parseInt(itemMatch[2]) : null;
 
                     if (!newDays) {
@@ -1620,7 +1718,7 @@
             if (lower.includes('expiring') || lower.includes('degradation') || lower.includes('status')) {
                 const expiring = getExpiringItems().filter(i => i.daysLeft <= 3);
                 if (expiring.length === 0) return { message: "All nutritional assets within acceptable parameters. No immediate degradation detected." };
-                return { message: `CRITICAL ASSETS APPROACHING DEGRADATION:\n${expiring.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\n')}` };
+                return { message: `CRITICAL ASSETS APPROACHING DEGRADATION:\n${expiring.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} ${i.unit || 'unit'}(s) in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\n')}` };
             }
 
             // Full inventory
@@ -1637,7 +1735,7 @@
                     output += locItems.map(i => {
                         const expiring = getExpiringItems().find(e => e.id === i.id);
                         const status = expiring.daysLeft <= 3 ? ' ⚠ DEGRADING' : '';
-                        return `• ${i.name.toUpperCase()}: ${i.quantity} units | ${i.shelfLife}d timeline | T-${expiring.daysLeft}d${status}`;
+                        return `• ${i.name.toUpperCase()}: ${i.quantity} ${i.unit || 'unit'}(s) | ${i.shelfLife}d timeline | T-${expiring.daysLeft}d${status}`;
                     }).join('\n');
                 }
                 return { message: output };
@@ -1648,19 +1746,19 @@
                 const items = getExpiringItems();
                 const oldItems = items.filter(i => { if (!i.lastUsed) return true; const daysSince = (Date.now() - new Date(i.lastUsed)) / (1000 * 60 * 60 * 24); return daysSince > 7; }).slice(0, 5);
                 if (oldItems.length === 0) return { message: "All assets within normal usage parameters. No neglected items detected." };
-                return { message: "NEGLECTED ASSETS DETECTED:\n" + oldItems.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\n') };
+                return { message: "NEGLECTED ASSETS DETECTED:\n" + oldItems.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} ${i.unit || 'unit'}(s) in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\n') };
             }
 
             // Analyze specific item
-            const analyzeMatch = lower.match(/(?:analyze|check|tell me about|status of)\s+(?:the\s+)?(\w+)/i);
+            const analyzeMatch = lower.match(/(?:analyze|check|tell me about|status of)\s+(?:the\s+)?([\w\s-]+)/i);
             if (analyzeMatch) {
-                const itemName = analyzeMatch[1];
-                const items = getInventory().filter(i => i.name.toLowerCase() === itemName.toLowerCase());
+                const itemName = normalizeItemName(analyzeMatch[1]);
+                const items = getInventory().filter(i => i.name.toLowerCase() === itemName);
                 if (items.length === 0) return { message: `ERROR: ${itemName} not found in registry.` };
 
                 const details = items.map(i => {
                     const expiring = getExpiringItems().find(e => e.id === i.id);
-                    return `${i.name.toUpperCase()}:\n• Location: ${i.location.toUpperCase()}\n• Quantity: ${i.quantity} units\n• Category: ${i.category.toUpperCase()}\n• Degradation timeline: ${i.shelfLife} days\n• Time until degradation: ${expiring.daysLeft} days\n• Added: ${new Date(i.addedDate).toLocaleDateString()}`;
+                    return `${i.name.toUpperCase()}:\n• Location: ${i.location.toUpperCase()}\n• Quantity: ${i.quantity} ${i.unit || 'unit'}(s)\n• Category: ${i.category.toUpperCase()}\n• Degradation timeline: ${i.shelfLife} days\n• Time until degradation: ${expiring.daysLeft} days\n• Added: ${new Date(i.addedDate).toLocaleDateString()}`;
                 }).join('\n\n');
 
                 return { message: `ASSET ANALYSIS:\n\n${details}` };
