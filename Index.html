@@ -564,6 +564,16 @@
             color: var(--accent-amber);
         }
 
+        .message.powered {
+            border-left-color: var(--accent-amber);
+            color: var(--terminal-fg);
+        }
+
+        .message.powered::before {
+            content: '> VIKI [POWERED]: ';
+            color: var(--accent-amber);
+        }
+
         .message.system {
             color: var(--accent-dim);
             font-style: italic;
@@ -764,7 +774,7 @@
 
     <div class="header">
         <div class="header-left">
-            <div class="logo">VIKI</div>
+            <div class="logo" id="vikiLogo">VIKI</div>
             <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.0.7 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
@@ -1007,6 +1017,7 @@
         let recognition = null;
         let isListening = false;
         let currentVoiceState = 'standby';
+        let poweredMode = false;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -1284,6 +1295,16 @@
                 aiStatus.classList.remove('active');
                 aiStatusText.textContent = 'VENICE_API';
             }
+        }
+
+        function setPoweredState(active) {
+            poweredMode = active;
+            const logo = document.getElementById('vikiLogo');
+            const aiStatus = document.getElementById('aiStatus');
+            const aiStatusText = document.getElementById('aiStatusText');
+            if (logo) logo.textContent = active ? 'VIKI [POWERED]' : 'VIKI';
+            if (aiStatus) aiStatus.classList.toggle('active', active || isUsingLocalAI());
+            if (aiStatusText) aiStatusText.textContent = active ? 'NEURAL_LINK' : (isUsingLocalAI() ? 'LOCAL' : 'VENICE_API');
         }
 
         // --- INVENTORY FUNCTIONS ---
@@ -1612,7 +1633,7 @@
         function addMessage(text, type = 'assistant') {
             const chatArea = document.getElementById('chatArea');
             const msg = document.createElement('div');
-            msg.className = `message ${type}`;
+            msg.className = `message ${type === 'assistant' && poweredMode ? 'powered' : type}`;
 
             String(text).split('\n').forEach((line, idx) => {
                 if (idx > 0) msg.appendChild(document.createElement('br'));
@@ -1746,7 +1767,7 @@
             const choices = questions.map((question, index) => question.type === 'select'
                 ? `Choice ${index + 1}: ${question.options.map(option => option.label).join(' / ')}`
                 : `Value ${index + 1}: ${question.placeholder || 'number'}`).join('\n');
-            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply with the requested value, CONFIRM to accept VIKI's best match, or CANCEL.`, 'assistant');
+            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply with the requested value, CONFIRM to accept VIKI's best match, or CANCEL.`, config.messageType || 'assistant');
         }
 
         function showPendingQuestions(questions, callback, config = {}) {
@@ -1833,12 +1854,12 @@
                 }
                 if (localResponse.error) {
                     try {
-                        const response = await callAI(`The local command handler reported this error: "${localResponse.message}". Assist the Operator with their original request: "${text}". Explain the correction and use a validated action only if it safely fulfills the request.`);
+                        const response = await callAI(`The request "${text}" did not match a local command because: "${localResponse.message}". Continue naturally as VIKI. If there is a likely intended command, ask "Did you mean ...?" and return the corresponding action so a simple yes can confirm it. Do not expose internal routing or mention AI assistance.`);
                         showTyping(false);
-                        addMessage(`${localResponse.message}\n\nAI ASSISTANCE:\n${response}`, 'assistant');
+                        addMessage(response, 'powered');
                     } catch (error) {
                         showTyping(false);
-                        addMessage(`${localResponse.message}\nAI assistance was unavailable: ${error.message}`, 'error');
+                        addMessage(`${localResponse.message}\nI could not extend interpretation: ${error.message}`, 'error');
                     }
                     return;
                 }
@@ -1850,7 +1871,7 @@
             try {
                 const response = await callAI(text);
                 showTyping(false);
-                addMessage(response, 'assistant');
+                addMessage(response, 'powered');
             } catch (error) {
                 showTyping(false);
                 addMessage(`Connection failed: ${error.message}`, 'error');
@@ -2085,6 +2106,20 @@
 
 
             // Explicit removal
+            const clearInventoryMatch = lower.match(/^(?:(?:please|can you|could you|would you)\s+)*(?:delete|remove|clear|discard|empty|wipe|get rid of)\s+(?:(?:out|away|all of)\s+)?(?:everything|all|the whole inventory|the entire inventory|all items|all assets)(?:\s+(?:from|in)\s+(?:the\s+)?(?:inventory|registry))?[.!?]*$/i);
+            if (clearInventoryMatch) {
+                const itemCount = getInventory().length;
+                if (itemCount === 0) return { message: 'The registry is already empty.' };
+                return withOperationConfirmation({
+                    summary: `Did you mean remove all ${itemCount} assets from the registry? This cannot be undone.`,
+                    confirmText: 'CONFIRM CLEAR REGISTRY',
+                    cancelMessage: 'Understood. I left the registry unchanged.'
+                }, () => {
+                    saveInventory([]);
+                    addMessage(`Confirmed. I removed all ${itemCount} assets from the registry.`, 'assistant');
+                });
+            }
+
             const removeMatch = lower.match(/(?:delete|remove|discard|throw away)\s+(?:the\s+)?(.+?)(?:\s+from\s+(fridge|freezer|cupboard))?$/i);
             if (removeMatch) {
                 const item = normalizeItemName(removeMatch[1]);
@@ -2192,7 +2227,7 @@
             if (!Array.isArray(payload.actions)) payload.actions = [];
             payload.actions.forEach((action, index) => {
                 if (!action || typeof action !== 'object') throw new Error(`Action ${index + 1} malformed.`);
-                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'set_view'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
+                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
                 if (['add_item', 'consume_item', 'modify_item', 'remove_item'].includes(action.type) && !action.name) throw new Error(`Action ${index + 1} missing name.`);
             });
             return payload;
@@ -2230,6 +2265,11 @@
                 saveInventory(remaining);
                 return `Removed ${action.name} from registry.`;
             }
+            if (action.type === 'clear_inventory') {
+                const itemCount = getInventory().length;
+                saveInventory([]);
+                return `Removed all ${itemCount} assets from the registry.`;
+            }
             if (action.type === 'set_view') {
                 setInventoryView(action.view || {});
                 return 'Display parameters updated from AI action.';
@@ -2238,10 +2278,11 @@
         }
 
         function getActionConfirmationReasons(action) {
-            if (!['consume_item', 'modify_item', 'remove_item'].includes(action.type)) return [];
+            if (!['consume_item', 'modify_item', 'remove_item', 'clear_inventory'].includes(action.type)) return [];
             const matches = action.name ? getMatchingItems(action.name, action.location || null) : [];
             const quantity = Number(action.quantity ?? 1);
             const reasons = ['AI registry mutations require explicit confirmation'];
+            if (action.type === 'clear_inventory') reasons.push('operation would delete the entire registry');
             if (action.type === 'remove_item') reasons.push('operation would delete an item');
             if (action.type === 'consume_item' && matches.some(item => item.quantity === quantity)) reasons.push('operation would consume all remaining quantity');
             if (!action.location && matches.length > 1) reasons.push('operation matches multiple assets');
@@ -2261,7 +2302,8 @@
                         questions.push(buildItemSelectionQuestion(matches));
                     }
                     const options = matches.length > 1 ? `\nOptions:\n${matches.map(item => `  ${formatInventoryOption(item)}`).join('\n')}` : '';
-                    return `${index + 1}. ${entry.action.type} ${entry.action.name || ''} — ${entry.reasons.join('; ')}.${options}`;
+                    const actionLabel = entry.action.type === 'clear_inventory' ? 'remove every asset' : `${entry.action.type} ${entry.action.name || ''}`;
+                    return `${index + 1}. ${actionLabel} — ${entry.reasons.join('; ')}.${options}`;
                 }).join('\n\n');
 
                 withOperationConfirmation({
@@ -2313,22 +2355,23 @@
                     throw new Error('AI did not return a usable shelf-life recommendation.');
                 }
             } catch (error) {
-                aiMessage = `AI review unavailable: ${error.message}`;
+                aiMessage = `Powered review unavailable: ${error.message}`;
             }
 
             const aiChoice = recommendation || defaultChoice;
             const summary = [
                 `Unfamiliar asset: ${parsed.item.toUpperCase()}. No saved preset or heuristic matched.`,
-                `AI assessment: ${recommendation ? `${aiChoice.shelfLife} days in ${aiChoice.location.toUpperCase()} (${aiChoice.category}). ${aiMessage}` : aiMessage}`,
-                `Without AI, VIKI would default to ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()} (${defaultChoice.category}).`,
-                'Reply AI or CONFIRM to use the AI assessment, DEFAULT to use the non-AI fallback, or reply with a number of days to override the timeline.'
+                `Powered assessment: ${recommendation ? `${aiChoice.shelfLife} days in ${aiChoice.location.toUpperCase()} (${aiChoice.category}). ${aiMessage}` : aiMessage}`,
+                `Standard VIKI rules would default to ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()} (${defaultChoice.category}).`,
+                'Reply POWERED or CONFIRM to use my assessment, DEFAULT to use the standard fallback, or reply with a number of days to override the timeline.'
             ].join('\n');
 
             showConfirmationPanel({
                 title: 'UNFAMILIAR ASSET REVIEW:',
                 summary,
+                messageType: 'powered',
                 questions: [{ type: 'select', options: [
-                    { value: 'ai', label: `AI (${aiChoice.shelfLife} DAYS)` },
+                    { value: 'ai', label: `POWERED (${aiChoice.shelfLife} DAYS)` },
                     { value: 'default', label: `DEFAULT (${defaultChoice.shelfLife} DAYS)` }
                 ]}],
                 cancelMessage: `${parsed.item} was not added.`
@@ -2337,12 +2380,21 @@
                 const selected = answers[0] === 'default' ? defaultChoice : aiChoice;
                 const shelfLife = Number.isFinite(customDays) && customDays > 0 ? customDays : selected.shelfLife;
                 const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note);
-                const source = Number.isFinite(customDays) && customDays > 0 ? 'Operator override' : (answers[0] === 'default' ? 'Non-AI default' : 'AI assessment');
-                addMessage(`${result.message} ${source}: ${shelfLife} day degradation timeline. Non-AI fallback was ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()}. You can change this later by specifying a new expiration timeline.`, 'assistant');
+                const source = Number.isFinite(customDays) && customDays > 0 ? 'Operator override' : (answers[0] === 'default' ? 'Standard default' : 'Powered assessment');
+                addMessage(`${result.message} ${source}: ${shelfLife} day degradation timeline. Standard fallback was ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()}. You can change this later by specifying a new expiration timeline.`, 'assistant');
             });
         }
 
-        async function callAI(userMessage, { apply = true } = {}) {
+        async function callAI(userMessage, options = {}) {
+            setPoweredState(true);
+            try {
+                return await requestAI(userMessage, options);
+            } finally {
+                setPoweredState(false);
+            }
+        }
+
+        async function requestAI(userMessage, { apply = true } = {}) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();

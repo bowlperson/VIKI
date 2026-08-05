@@ -58,6 +58,8 @@ New items do not require a location or quantity. Quantity defaults to one, while
 
 When a new item does not match any preset, tag, or heuristic, VIKI asks the configured AI for a likely storage location, category, and shelf life before adding it. The review always displays what the non-AI fallback would have selected. Reply `AI` (or `CONFIRM`), `DEFAULT`, a custom number of days, or `CANCEL`. Local command errors are also passed to the configured AI for a corrective explanation or a validated, confirmable action; if the AI is unavailable, the original error and connection failure remain visible.
 
+VIKI remains the conversational identity when a request needs model-powered interpretation. During that processing the header and response label display `VIKI [POWERED]`, without presenting a separate assistant persona. Approximate commands can be resolved with a natural “Did you mean…?” question and confirmed by replying `yes`. Common variants such as `delete everything`, `remove all items`, `clear the whole inventory`, and `wipe all assets` request a full registry clear and always require confirmation before any data is removed.
+
 Open **Settings** in the application header to edit the AI configuration, tag matching priority, unknown-item fallback, data tools, and preset rules in this format:
 
 ```text
