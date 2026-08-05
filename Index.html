@@ -354,6 +354,28 @@
             border-color: var(--accent-cyan);
         }
 
+        .config-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .config-button {
+            background: #111113;
+            border: 1px solid var(--border-color);
+            color: var(--accent-cyan);
+            cursor: pointer;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.7rem;
+            padding: 6px 8px;
+        }
+
+        .config-button:hover {
+            border-color: var(--accent-amber);
+            color: var(--accent-amber);
+        }
+
         .toggle-row {
             display: flex;
             align-items: center;
@@ -812,6 +834,11 @@
                     <input type="checkbox" id="useLocalAI">
                     <label class="toggle-label">LOCAL_MODE [OLLAMA]</label>
                 </div>
+                <div class="config-actions">
+                    <button type="button" class="config-button" id="exportDataButton">EXPORT_DATA</button>
+                    <button type="button" class="config-button" id="importDataButton">IMPORT_DATA</button>
+                    <input type="file" id="importDataInput" accept="application/json,.json" hidden>
+                </div>
             </div>
         </div>
 
@@ -860,6 +887,8 @@
         // --- DATA STORAGE ---
         const DB_KEY = 'viki_inventory_v2';
         const CATEGORIES_KEY = 'viki_categories';
+        const EXPORT_SCHEMA_VERSION = 1;
+        const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
         // Default asset database with locations
@@ -915,6 +944,99 @@
             renderBootMessages();
             setInterval(updateDeviceDateTime, 1000);
         });
+
+        function getModelSettingsForExport() {
+            return {
+                viki_model: document.getElementById('modelSelect').value,
+                viki_local: String(document.getElementById('useLocalAI').checked)
+            };
+        }
+
+        function exportData() {
+            const payload = {
+                schemaVersion: EXPORT_SCHEMA_VERSION,
+                exportedAt: getDeviceNow().toISOString(),
+                viki_inventory_v2: getInventory(),
+                viki_categories: getAssetDatabase(),
+                modelSettings: getModelSettingsForExport()
+            };
+
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `viki-export-${getDeviceNow().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            addMessage('EXPORT_DATA complete. Registry package staged for download.', 'system');
+        }
+
+        function isPlainObject(value) {
+            return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+        }
+
+        function validateInventoryImport(items) {
+            return Array.isArray(items) && items.every(item => isPlainObject(item)
+                && typeof item.name === 'string'
+                && Number.isFinite(Number(item.quantity))
+                && typeof item.location === 'string'
+                && typeof item.category === 'string'
+                && typeof item.addedDate === 'string'
+                && !Number.isNaN(Date.parse(item.addedDate))
+                && Number.isFinite(Number(item.shelfLife)));
+        }
+
+        function validateCategoriesImport(categories) {
+            return isPlainObject(categories) && Object.values(categories).every(entry => isPlainObject(entry)
+                && Number.isFinite(Number(entry.days))
+                && typeof entry.category === 'string'
+                && typeof entry.location === 'string');
+        }
+
+        function validateModelSettingsImport(settings) {
+            if (!isPlainObject(settings)) return false;
+            return Object.entries(settings).every(([key, value]) => MODEL_SETTINGS_KEYS.includes(key) && typeof value === 'string');
+        }
+
+        function validateImportPayload(payload) {
+            if (!isPlainObject(payload)) throw new Error('Import root must be a JSON object.');
+            if (payload.schemaVersion !== EXPORT_SCHEMA_VERSION) throw new Error(`Unsupported schema version: ${payload.schemaVersion}.`);
+            if (!validateInventoryImport(payload.viki_inventory_v2)) throw new Error('Invalid viki_inventory_v2 shape.');
+            if (!validateCategoriesImport(payload.viki_categories)) throw new Error('Invalid viki_categories shape.');
+            if (!validateModelSettingsImport(payload.modelSettings)) throw new Error('Invalid modelSettings shape.');
+        }
+
+        function applyImportedData(payload) {
+            localStorage.setItem(DB_KEY, JSON.stringify(payload.viki_inventory_v2));
+            localStorage.setItem(CATEGORIES_KEY, JSON.stringify(payload.viki_categories));
+            MODEL_SETTINGS_KEYS.forEach(key => localStorage.removeItem(key));
+            Object.entries(payload.modelSettings).forEach(([key, value]) => localStorage.setItem(key, value));
+
+            const importedModel = localStorage.getItem('viki_model');
+            if (importedModel) document.getElementById('modelSelect').value = importedModel;
+            const importedLocal = localStorage.getItem('viki_local');
+            document.getElementById('useLocalAI').checked = importedLocal === 'true';
+
+            updateStatus();
+            renderInventory();
+            checkExpiringItems();
+            addMessage('IMPORT_DATA complete. Inventory registry and alert matrix refreshed.', 'system');
+        }
+
+        async function importDataFromFile(file) {
+            if (!file) return;
+            try {
+                const payload = JSON.parse(await file.text());
+                validateImportPayload(payload);
+                applyImportedData(payload);
+            } catch (error) {
+                addMessage(`IMPORT_DATA rejected: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('importDataInput').value = '';
+            }
+        }
 
         function renderBootMessages() {
             const container = document.getElementById('vikiBootMessages');
@@ -2154,6 +2276,9 @@
         document.getElementById('apiKey').addEventListener('change', (e) => localStorage.setItem('viki_api_key', e.target.value));
         document.getElementById('modelSelect').addEventListener('change', (e) => localStorage.setItem('viki_model', e.target.value));
         document.getElementById('useLocalAI').addEventListener('change', (e) => { localStorage.setItem('viki_local', e.target.checked); updateStatus(); });
+        document.getElementById('exportDataButton').addEventListener('click', exportData);
+        document.getElementById('importDataButton').addEventListener('click', () => document.getElementById('importDataInput').click());
+        document.getElementById('importDataInput').addEventListener('change', (e) => importDataFromFile(e.target.files[0]));
         ['inventorySearch', 'categoryFilter', 'statusFilter', 'quantityFilter', 'ageFilter', 'daysMinFilter', 'daysMaxFilter', 'addedAfterFilter', 'addedBeforeFilter', 'inventorySort'].forEach(id => {
             document.getElementById(id).addEventListener('input', renderInventory);
             document.getElementById(id).addEventListener('change', renderInventory);
