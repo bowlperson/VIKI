@@ -325,6 +325,13 @@
             outline: none;
             border-color: var(--accent-cyan);
         }
+
+        .config-note {
+            color: var(--accent-amber);
+            font-size: 0.65rem;
+            line-height: 1.4;
+            margin-top: 4px;
+        }
         
         .toggle-row {
             display: flex;
@@ -625,7 +632,8 @@
                 <div class="config-title">// CONFIGURATION</div>
                 <div class="config-row">
                     <label class="config-label">API_KEY</label>
-                    <input type="password" class="config-input" id="apiKey" placeholder="ENTER_KEY">
+                    <input type="password" class="config-input" id="apiKey" placeholder="PASTE_VENICE_API_KEY">
+                    <div class="config-note">Required for Venice API mode. Saved only after you enter a key. Browser localStorage is convenience storage, not secure secret storage.</div>
                 </div>
                 <div class="config-row">
                     <label class="config-label">AI_MODEL</label>
@@ -677,7 +685,7 @@
         // --- CONFIGURATION ---
         const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions';
         const OLLAMA_URL = 'http://localhost:11434/api/chat';
-        const DEFAULT_API_KEY = 'VENICE_INFERENCE_KEY_SC9fuUJsuDDmCfMzvNlb8jmMDbdjJvlgnou2H7bPUx';
+        const DEFAULT_API_KEY = '';
         
         // --- DATA STORAGE ---
         const DB_KEY = 'viki_inventory_v2';
@@ -713,7 +721,7 @@
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            const savedKey = localStorage.getItem('viki_api_key') || DEFAULT_API_KEY;
+            const savedKey = localStorage.getItem('viki_api_key') || '';
             document.getElementById('apiKey').value = savedKey;
             
             const savedModel = localStorage.getItem('viki_model');
@@ -726,6 +734,11 @@
             updateStatus();
             renderInventory();
             checkExpiringItems();
+
+            if (!savedKey && !isUsingLocalAI()) {
+                addMessage('Venice API mode requires configuration. Paste your Venice API key into API_KEY before first use.', 'system');
+                addMessage('Key storage notice: VIKI can remember user-provided keys in browser localStorage for convenience only. localStorage is not secure secret storage. Long-term hardening option: add a tiny local proxy service later so this HTML-only client stays keyless by default.', 'system');
+            }
         });
         
         // Asset database management
@@ -759,7 +772,7 @@
         }
         
         function getApiKey() {
-            return document.getElementById('apiKey').value || DEFAULT_API_KEY;
+            return document.getElementById('apiKey').value.trim();
         }
         
         function updateStatus() {
@@ -1156,7 +1169,7 @@ n             }
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();
             
-            if (!useLocal && !apiKey) throw new Error('API key required. Enter in configuration panel.');
+            if (!useLocal && !apiKey) throw new Error('API key required. Paste your Venice API key into the API_KEY configuration field. This HTML-only version is keyless by default.');
             
             const inventory = getInventory();
             const inventoryContext = inventory.length > 0 ? `Current registry: ${inventory.map(i => `${i.name}(${i.quantity}) in ${i.location}`).join(', ')}` : 'Registry empty.';
@@ -1246,7 +1259,14 @@ Respond as VIKI. No contractions. Address as Operator. Technical framing. Clinic
         }
         
         // Save settings
-        document.getElementById('apiKey').addEventListener('change', (e) => localStorage.setItem('viki_api_key', e.target.value));
+        document.getElementById('apiKey').addEventListener('change', (e) => {
+            const userProvidedKey = e.target.value.trim();
+            if (userProvidedKey) {
+                localStorage.setItem('viki_api_key', userProvidedKey);
+            } else {
+                localStorage.removeItem('viki_api_key');
+            }
+        });
         document.getElementById('modelSelect').addEventListener('change', (e) => localStorage.setItem('viki_model', e.target.value));
         document.getElementById('useLocalAI').addEventListener('change', (e) => { localStorage.setItem('viki_local', e.target.checked); updateStatus(); });
     </script>
