@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIKI // Virtual Inventory Keeper Intelligence</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        
+        :root {
+            --terminal-bg: #0a0a0c;
+            --terminal-fg: #d4d4d4;
+            --accent-amber: #ff9d00;
+            --accent-cyan: #00d4aa;
+            --accent-red: #ff4444;
+            --accent-dim: #4a4a4a;
+            --border-color: #2a2a2a;
+            --fridge: #00d4aa;
+            --freezer: #00a8ff;
+            --cupboard: #ff9d00;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Share Tech Mono', monospace;
+            background: var(--terminal-bg);
+            color: var(--terminal-fg);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #1a1a1c 0%, #0f0f10 100%);
+            border-bottom: 1px solid var(--accent-amber);
+            padding: 8px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo {
+            color: var(--accent-amber);
+            font-size: 1.2rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        
+        .logo::before {
+            content: '▶ ';
+            color: var(--accent-cyan);
+        }
+        
+        .subtitle {
+            color: var(--accent-dim);
+            font-size: 0.75rem;
+        }
+        
+        .system-status {
+            display: flex;
+            gap: 16px;
+            font-size: 0.75rem;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-dim);
+        }
+        
+        .status-indicator.active {
+            background: var(--accent-cyan);
+            box-shadow: 0 0 4px var(--accent-cyan);
+        }
+        
+        .container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 340px;
+            background: #0d0d0e;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .sidebar-title {
+            color: var(--accent-cyan);
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+        
+        .sidebar-title::before {
+            content: '[ ';
+        }
+        
+        .sidebar-title::after {
+            content: ' ]';
+        }
+        
+        .item-count {
+            color: var(--accent-dim);
+            font-size: 0.75rem;
+        }
+        
+        .filter-tabs {
+            display: flex;
+            padding: 8px;
+            gap: 4px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .filter-tab {
+            flex: 1;
+            padding: 6px;
+            background: #111113;
+            border: 1px solid var(--border-color);
+            color: var(--accent-dim);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.7rem;
+            cursor: pointer;
+            text-align: center;
+        }
+        
+        .filter-tab.active {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+        
+        .inventory-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        
+        .inventory-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .inventory-list::-webkit-scrollbar-track {
+            background: #0a0a0c;
+        }
+        
+        .inventory-list::-webkit-scrollbar-thumb {
+            background: var(--accent-dim);
+        }
+        
+        .inventory-item {
+            background: #111113;
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent-dim);
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .inventory-item:hover {
+            background: #1a1a1c;
+            border-color: var(--accent-amber);
+        }
+        
+        .inventory-item.expiring {
+            border-left-color: var(--accent-amber);
+        }
+        
+        .inventory-item.expired {
+            border-left-color: var(--accent-red);
+            opacity: 0.6;
+        }
+        
+        .inventory-item.fresh {
+            border-left-color: var(--accent-cyan);
+        }
+        
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        
+        .item-name {
+            color: var(--terminal-fg);
+            font-weight: bold;
+        }
+        
+        .item-qty {
+            color: var(--accent-cyan);
+            font-size: 0.8rem;
+        }
+        
+        .item-location {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 2px;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        
+        .loc-fridge {
+            background: rgba(0, 212, 170, 0.2);
+            color: var(--fridge);
+        }
+        
+        .loc-freezer {
+            background: rgba(0, 168, 255, 0.2);
+            color: var(--freezer);
+        }
+        
+        .loc-cupboard {
+            background: rgba(255, 157, 0, 0.2);
+            color: var(--cupboard);
+        }
+        
+        .item-meta {
+            font-size: 0.75rem;
+            color: var(--accent-dim);
+        }
+        
+        .item-timer {
+            font-size: 0.7rem;
+            margin-top: 4px;
+            padding: 2px 6px;
+            background: #0a0a0c;
+            display: inline-block;
+        }
+        
+        .timer-warning {
+            color: var(--accent-amber);
+        }
+        
+        .timer-critical {
+            color: var(--accent-red);
+        }
+        
+        .timer-ok {
+            color: var(--accent-cyan);
+        }
+        
+        .config-panel {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            background: #0a0a0c;
+        }
+        
+        .config-title {
+            color: var(--accent-amber);
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+        
+        .config-row {
+            margin-bottom: 8px;
+        }
+        
+        .config-label {
+            font-size: 0.7rem;
+            color: var(--accent-dim);
+            margin-bottom: 4px;
+            display: block;
+        }
+        
+        .config-input, .config-select {
+            width: 100%;
+            background: #111113;
+            border: 1px solid var(--border-color);
+            color: var(--terminal-fg);
+            padding: 6px 8px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.8rem;
+        }
+        
+        .config-input:focus, .config-select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+        
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .toggle-label {
+            font-size: 0.75rem;
+            color: var(--terminal-fg);
+        }
+        
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0a0a0c;
+        }
+        
+        .terminal-output {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        
+        .terminal-output::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .terminal-output::-webkit-scrollbar-track {
+            background: #0a0a0c;
+        }
+        
+        .terminal-output::-webkit-scrollbar-thumb {
+            background: var(--accent-dim);
+        }
+        
+        .message {
+            margin-bottom: 12px;
+            padding-left: 8px;
+            border-left: 2px solid transparent;
+        }
+        
+        .message.user {
+            border-left-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+        
+        .message.user::before {
+            content: '> OPERATOR: ';
+            color: var(--accent-dim);
+        }
+        
+        .message.assistant {
+            border-left-color: var(--accent-amber);
+            color: var(--terminal-fg);
+        }
+        
+        .message.assistant::before {
+            content: '> VIKI: ';
+            color: var(--accent-amber);
+        }
+        
+        .message.system {
+            color: var(--accent-dim);
+            font-style: italic;
+            border-left-color: var(--accent-dim);
+        }
+        
+        .message.system::before {
+            content: '> SYS: ';
+        }
+        
+        .message.error {
+            border-left-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+        
+        .message.error::before {
+            content: '> ERR: ';
+            color: var(--accent-red);
+        }
+        
+        .input-area {
+            padding: 12px 16px;
+            background: #0d0d0e;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .quick-commands {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .quick-cmd {
+            background: #111113;
+            border: 1px solid var(--border-color);
+            color: var(--accent-dim);
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            font-family: 'Share Tech Mono', monospace;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .quick-cmd:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+        
+        .input-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .input-prompt {
+            color: var(--accent-amber);
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        
+        #messageInput {
+            flex: 1;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--terminal-fg);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.9rem;
+            padding: 6px 0;
+        }
+        
+        #messageInput:focus {
+            outline: none;
+            border-bottom-color: var(--accent-cyan);
+        }
+        
+        .send-btn {
+            background: transparent;
+            border: 1px solid var(--accent-amber);
+            color: var(--accent-amber);
+            padding: 6px 16px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .send-btn:hover {
+            background: var(--accent-amber);
+            color: #000;
+        }
+        
+        .typing-indicator {
+            display: none;
+            padding: 8px 16px;
+            color: var(--accent-dim);
+            font-size: 0.8rem;
+        }
+        
+        .typing-indicator.active {
+            display: block;
+        }
+        
+        .typing-indicator::before {
+            content: '> VIKI: ';
+            color: var(--accent-amber);
+        }
+        
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 15px;
+            background: var(--accent-amber);
+            margin-left: 4px;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .alert-banner {
+            display: none;
+            background: #1a0a00;
+            border-bottom: 1px solid var(--accent-amber);
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            color: var(--accent-amber);
+        }
+        
+        .alert-banner.show {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .alert-banner::before {
+            content: '⚠';
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--accent-dim);
+        }
+        
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        
+        .pending-questions {
+            background: #1a1a1c;
+            border: 1px solid var(--accent-amber);
+            padding: 12px;
+            margin: 8px 16px;
+            border-radius: 4px;
+        }
+        
+        .pending-questions label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--accent-amber);
+            font-size: 0.8rem;
+        }
+        
+        .pending-questions select, .pending-questions input {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 8px;
+            background: #0a0a0c;
+            border: 1px solid var(--border-color);
+            color: var(--terminal-fg);
+            font-family: 'Share Tech Mono', monospace;
+        }
+        
+        .pending-questions button {
+            background: var(--accent-amber);
+            color: #000;
+            border: none;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-family: 'Share Tech Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="alert-banner" id="expiringAlert">
+        CRITICAL: Nutritional assets approaching degradation threshold
+    </div>
+    
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">VIKI</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.0.7 // ABEL & ANNA SYSTEM</div>
+        </div>
+        <div class="system-status">
+            <div class="status-item">
+                <div class="status-indicator active" id="sysStatus"></div>
+                <span>SYSTEM</span>
+            </div>
+            <div class="status-item">
+                <div class="status-indicator" id="aiStatus"></div>
+                <span id="aiStatusText">STANDBY</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title">ASSET_REGISTRY</div>
+                <div class="item-count" id="itemCount">0 assets</div>
+            </div>
+            <div class="filter-tabs">
+                <div class="filter-tab active" onclick="filterInventory('all')">ALL</div>
+                <div class="filter-tab" onclick="filterInventory('fridge')">FRIDGE</div>
+                <div class="filter-tab" onclick="filterInventory('freezer')">FREEZER</div>
+                <div class="filter-tab" onclick="filterInventory('cupboard')">CUPBOARD</div>
+            </div>
+            <div class="inventory-list" id="inventoryList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">□</div>
+                    <div>No assets detected</div>
+                    <div style="font-size: 0.75rem; margin-top: 8px;">Initialize registry with first entry</div>
+                </div>
+            </div>
+            <div class="config-panel">
+                <div class="config-title">// CONFIGURATION</div>
+                <div class="config-row">
+                    <label class="config-label">API_KEY</label>
+                    <input type="password" class="config-input" id="apiKey" placeholder="ENTER_KEY">
+                </div>
+                <div class="config-row">
+                    <label class="config-label">AI_MODEL</label>
+                    <select class="config-select" id="modelSelect">
+                        <option value="qwen-3-5-9b">QWEN-3.5-9B [ECONOMY]</option>
+                        <option value="gemma-4-uncensored">GEMMA-4-UNC [BALANCED]</option>
+                        <option value="venice-uncensored-1-2">VENICE-1.2 [PREMIUM]</option>
+                    </select>
+                </div>
+                <div class="toggle-row">
+                    <input type="checkbox" id="useLocalAI">
+                    <label class="toggle-label">LOCAL_MODE [OLLAMA]</label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="terminal-output" id="chatArea">
+                <div class="message system">Initializing VIKI system...</div>
+                <div class="message system">Asset registry connection: ESTABLISHED</div>
+                <div class="message system">Neural interface: ONLINE</div>
+                <div class="message system">Thermal preservation units: MONITORED</div>
+                <div class="message assistant">Acknowledged, Operator. I am VIKI - Virtual Inventory Keeper Intelligence, version 1.0.7. I am designed for Operators Abel and Anna to manage household nutritional assets and domestic operations.</div>
+                <div class="message assistant">I am incapable of emotional panic or rudeness. I maintain clinical detachment while providing protocol-driven solutions. I do not use contractions.</div>
+                <div class="message assistant">Commands: REPORT_STATUS | ADD_ASSET | CONSUME_ASSET | CHECK_DEGRADATION | MODIFY_PARAMETERS</div>
+                <div class="message assistant">Or speak naturally. I am monitoring thermal preservation units and dry goods repositories.</div>
+            </div>
+            <div class="typing-indicator" id="typingIndicator">
+                Processing request<span class="cursor"></span>
+            </div>
+            <div id="pendingQuestions"></div>
+            <div class="input-area">
+                <div class="quick-commands">
+                    <button class="quick-cmd" onclick="quickMessage('Status report')">STATUS</button>
+                    <button class="quick-cmd" onclick="quickMessage('What is expiring')">DEGRADATION</button>
+                    <button class="quick-cmd" onclick="quickMessage('Full inventory')">REGISTRY</button>
+                    <button class="quick-cmd" onclick="quickMessage('What am I forgetting')">NEGLECTED</button>
+                </div>
+                <div class="input-line">
+                    <span class="input-prompt">></span>
+                    <input type="text" id="messageInput" placeholder="Enter command or query..." onkeypress="handleKeyPress(event)">
+                    <button class="send-btn" onclick="sendMessage()">EXECUTE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions';
+        const OLLAMA_URL = 'http://localhost:11434/api/chat';
+        const DEFAULT_API_KEY = 'VENICE_INFERENCE_KEY_SC9fuUJsuDDmCfMzvNlb8jmMDbdjJvlgnou2H7bPUx';
+        
+        // --- DATA STORAGE ---
+        const DB_KEY = 'viki_inventory_v2';
+        const CATEGORIES_KEY = 'viki_categories';
+        
+        // Default asset database with locations
+        const DEFAULT_ASSETS = {
+            'eggs': { days: 28, category: 'dairy', location: 'fridge' },
+            'milk': { days: 7, category: 'dairy', location: 'fridge' },
+            'bread': { days: 7, category: 'grains', location: 'cupboard' },
+            'chicken': { days: 2, category: 'meat', location: 'fridge' },
+            'beef': { days: 3, category: 'meat', location: 'fridge' },
+            'fish': { days: 2, category: 'seafood', location: 'fridge' },
+            'cheese': { days: 14, category: 'dairy', location: 'fridge' },
+            'yogurt': { days: 14, category: 'dairy', location: 'fridge' },
+            'butter': { days: 60, category: 'dairy', location: 'fridge' },
+            'apples': { days: 30, category: 'produce', location: 'fridge' },
+            'bananas': { days: 7, category: 'produce', location: 'cupboard' },
+            'lettuce': { days: 7, category: 'produce', location: 'fridge' },
+            'tomatoes': { days: 7, category: 'produce', location: 'cupboard' },
+            'onions': { days: 30, category: 'produce', location: 'cupboard' },
+            'potatoes': { days: 60, category: 'produce', location: 'cupboard' },
+            'rice': { days: 365, category: 'grains', location: 'cupboard' },
+            'pasta': { days: 365, category: 'grains', location: 'cupboard' },
+            'flour': { days: 180, category: 'baking', location: 'cupboard' },
+            'sugar': { days: 365, category: 'baking', location: 'cupboard' },
+            'coffee': { days: 30, category: 'beverages', location: 'cupboard' },
+            'default': { days: 14, category: 'general', location: 'fridge' }
+        };
+        
+        let currentFilter = 'all';
+        let pendingQuestions = null;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('viki_api_key') || DEFAULT_API_KEY;
+            document.getElementById('apiKey').value = savedKey;
+            
+            const savedModel = localStorage.getItem('viki_model');
+            if (savedModel) document.getElementById('modelSelect').value = savedModel;
+            
+            const savedLocal = localStorage.getItem('viki_local');
+            if (savedLocal) document.getElementById('useLocalAI').checked = savedLocal === 'true';
+            
+            loadAssetDatabase();
+            updateStatus();
+            renderInventory();
+            checkExpiringItems();
+        });
+        
+        // Asset database management
+        function getAssetDatabase() {
+            const data = localStorage.getItem(CATEGORIES_KEY);
+            return data ? JSON.parse(data) : { ...DEFAULT_ASSETS };
+        }
+        
+        function saveAssetDatabase(db) {
+            localStorage.setItem(CATEGORIES_KEY, JSON.stringify(db));
+        }
+        
+        function loadAssetDatabase() {
+            const existing = localStorage.getItem(CATEGORIES_KEY);
+            if (!existing) saveAssetDatabase(DEFAULT_ASSETS);
+        }
+        
+        function getAssetInfo(name) {
+            const db = getAssetDatabase();
+            return db[name.toLowerCase().trim()] || db['default'];
+        }
+        
+        function addAssetToDatabase(name, info) {
+            const db = getAssetDatabase();
+            db[name.toLowerCase().trim()] = info;
+            saveAssetDatabase(db);
+        }
+        
+        function isUsingLocalAI() {
+            return document.getElementById('useLocalAI').checked;
+        }
+        
+        function getApiKey() {
+            return document.getElementById('apiKey').value || DEFAULT_API_KEY;
+        }
+        
+        function updateStatus() {
+            const aiStatus = document.getElementById('aiStatus');
+            const aiStatusText = document.getElementById('aiStatusText');
+            
+            if (isUsingLocalAI()) {
+                aiStatus.classList.add('active');
+                aiStatusText.textContent = 'LOCAL';
+            } else {
+                aiStatus.classList.remove('active');
+                aiStatusText.textContent = 'VENICE_API';
+            }
+        }
+        
+        // --- INVENTORY FUNCTIONS ---
+        
+        function getInventory() {
+            const data = localStorage.getItem(DB_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+        
+        function saveInventory(items) {
+            localStorage.setItem(DB_KEY, JSON.stringify(items));
+            renderInventory();
+            checkExpiringItems();
+        }
+        
+        function addItem(name, quantity = 1, location = null, customShelfLife = null, category = null) {
+            const items = getInventory();
+            const normalizedName = name.toLowerCase().trim();
+            const assetInfo = getAssetInfo(normalizedName);
+            
+            const finalLocation = location || assetInfo.location || 'fridge';
+            const finalShelfLife = customShelfLife || assetInfo.days || 14;
+            const finalCategory = category || assetInfo.category || 'general';
+            
+            const existing = items.find(i => i.name.toLowerCase() === normalizedName && i.location === finalLocation);
+            
+            if (existing) {
+                existing.quantity += quantity;
+                existing.lastAdded = new Date().toISOString();
+                if (customShelfLife) existing.shelfLife = customShelfLife;
+            } else {
+                items.push({
+                    id: Date.now(),
+                    name: name,
+                    quantity: quantity,
+                    category: finalCategory,
+                    location: finalLocation,
+                    addedDate: new Date().toISOString(),
+                    shelfLife: finalShelfLife,
+                    lastUsed: null,
+                    lastAdded: new Date().toISOString()
+                });
+            }
+            
+            saveInventory(items);
+            return {
+                message: `Added ${quantity} unit(s) of ${name} to ${finalLocation} registry.`,
+                details: { name, quantity, location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, daysLeft: finalShelfLife }
+            };
+        }
+        
+        function useItem(name, quantity = 1, location = null) {
+            const items = getInventory();
+            const normalizedName = name.toLowerCase().trim();
+            
+            let item;
+            if (location) {
+                item = items.find(i => i.name.toLowerCase() === normalizedName && i.location === location);
+            } else {
+                item = items.find(i => i.name.toLowerCase() === normalizedName);
+            }
+            
+            if (!item) return { error: `ERROR: ${name} not found in registry.` };
+            if (item.quantity < quantity) return { error: `ERROR: Insufficient quantity. Only ${item.quantity} unit(s) available in ${item.location}.` };
+            
+            item.quantity -= quantity;
+            item.lastUsed = new Date().toISOString();
+            const remaining = item.quantity;
+            
+            if (item.quantity === 0) {
+                const idx = items.indexOf(item);
+                items.splice(idx, 1);
+                saveInventory(items);
+                return { message: `Removed ${name} from ${item.location}. Stock depleted.`, details: { name, location: item.location, remaining: 0 } };
+            }
+            
+            saveInventory(items);
+            return { message: `Consumed ${quantity} unit(s) of ${name} from ${item.location}. ${remaining} remaining.`, details: { name, location: item.location, remaining } };
+        }
+        
+        function modifyItem(name, newShelfLife, location = null) {
+            const items = getInventory();
+            const normalizedName = name.toLowerCase().trim();
+            
+            let item;
+            if (location) {
+                item = items.find(i => i.name.toLowerCase() === normalizedName && i.location === location);
+            } else {
+                item = items.find(i => i.name.toLowerCase() === normalizedName);
+            }
+            
+            if (!item) return { error: `ERROR: ${name} not found in registry.` };
+            
+            const oldShelfLife = item.shelfLife;
+            item.shelfLife = newShelfLife;
+            saveInventory(items);
+            
+            return { message: `Modified degradation timeline for ${name}. Previous: ${oldShelfLife} days. Current: ${newShelfLife} days.` };
+        }
+        
+        function getExpiringItems() {
+            const items = getInventory();
+            const now = new Date();
+            
+            return items.map(item => {
+                const added = new Date(item.addedDate);
+                const expires = new Date(added.getTime() + item.shelfLife * 24 * 60 * 60 * 1000);
+                const daysLeft = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
+                return { ...item, daysLeft, expires };
+            }).sort((a, b) => a.daysLeft - b.daysLeft);
+        }
+        
+        function checkExpiringItems() {
+            const expiring = getExpiringItems().filter(i => i.daysLeft <= 3 && i.daysLeft > 0);
+            const alert = document.getElementById('expiringAlert');
+            alert.textContent = `CRITICAL: ${expiring.length} nutritional asset(s) approaching degradation threshold`;
+            alert.classList.toggle('show', expiring.length > 0);
+        }
+        
+        function filterInventory(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            renderInventory();
+        }
+        
+        function renderInventory() {
+            const list = document.getElementById('inventoryList');
+            let items = getExpiringItems();
+            const countEl = document.getElementById('itemCount');
+            
+            if (currentFilter !== 'all') items = items.filter(i => i.location === currentFilter);
+            countEl.textContent = `${items.length} asset(s)`;
+            
+            if (items.length === 0) {
+                list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">□</div><div>No assets detected</div><div style="font-size: 0.75rem; margin-top: 8px;">Initialize registry with first entry</div></div>`;
+                return;
+            }
+            
+            list.innerHTML = items.map(item => {
+                let itemClass = '', timerClass = 'timer-ok', timerText = `T-${item.daysLeft}D`;
+                if (item.daysLeft <= 0) { itemClass = 'expired'; timerClass = 'timer-critical'; timerText = 'DEGRADED'; }
+                else if (item.daysLeft <= 3) { itemClass = 'expiring'; timerClass = 'timer-warning'; }
+                else if (item.daysLeft > 7) { itemClass = 'fresh'; }
+                
+                return `
+                    <div class="inventory-item ${itemClass}" onclick="quickMessage('Analyze ${item.name}')">
+                        <div class="item-header">
+                            <div>
+                                <span class="item-location loc-${item.location}">${item.location.toUpperCase()}</span>
+                                <span class="item-name">${item.name.toUpperCase()}</span>
+                            </div>
+                            <div class="item-qty">${item.quantity} units</div>
+                        </div>
+                        <div class="item-meta">CAT: ${item.category.toUpperCase()} | ADDED: ${new Date(item.addedDate).toLocaleDateString()}</div>
+                        <div class="item-timer ${timerClass}">${timerText} | DEGRADATION: ${item.shelfLife} days</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // --- CHAT INTERFACE ---
+        
+        function addMessage(text, type = 'assistant') {
+            const chatArea = document.getElementById('chatArea');
+            const msg = document.createElement('div');
+            msg.className = `message ${type}`;
+            msg.innerHTML = text.replace(/\n/g, '<br>');
+            chatArea.appendChild(msg);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function showTyping(show) {
+            document.getElementById('typingIndicator').classList.toggle('active', show);
+        }
+        
+        function quickMessage(text) {
+            document.getElementById('messageInput').value = text;
+            sendMessage();
+        }
+        
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+        
+        // --- PENDING QUESTIONS SYSTEM ---
+        
+        function showPendingQuestions(questions, callback) {
+            const container = document.getElementById('pendingQuestions');
+            let html = '<div class="pending-questions"><label>ADDITIONAL PARAMETERS REQUIRED:</label>';
+            
+            questions.forEach((q, idx) => {
+                if (q.type === 'select') {
+                    html += `<select id="pending-${idx}">${q.options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('')}</select>`;
+                } else {
+                    html += `<input type="${q.type}" id="pending-${idx}" placeholder="${q.placeholder}" step="${q.step || 1}">`;
+                }
+            });
+            
+            html += '<button onclick="submitPendingQuestions()">CONFIRM PARAMETERS</button></div>';
+            container.innerHTML = html;
+            pendingQuestions = { questions, callback };
+        }
+        
+        function submitPendingQuestions() {
+            if (!pendingQuestions) return;
+            const answers = pendingQuestions.questions.map((q, idx) => {
+                const val = document.getElementById(`pending-${idx}`).value;
+                return q.type === 'number' ? parseFloat(val) || 0 : val;
+            });
+            document.getElementById('pendingQuestions').innerHTML = '';
+            pendingQuestions.callback(answers);
+            pendingQuestions = null;
+        }
+        
+        // --- COMMAND PROCESSING ---
+        
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            if (!text) return;
+            if (pendingQuestions) {
+                addMessage("Please complete parameter configuration above.", "system");
+                return;
+            }
+            
+            input.value = '';
+            addMessage(text, 'user');
+            showTyping(true);
+            
+            const localResponse = await handleLocalCommand(text);
+            if (localResponse) {
+                showTyping(false);
+                if (localResponse.type === 'pending') return;
+                addMessage(localResponse.message, localResponse.error ? 'error' : 'assistant');
+                return;
+            }
+            
+            try {
+                const response = await callAI(text);
+                showTyping(false);
+                addMessage(response, 'assistant');
+            } catch (error) {
+                showTyping(false);
+                addMessage(`Connection failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function handleLocalCommand(text) {
+            const lower = text.toLowerCase();
+            
+            // Add with fractions
+            const addMatch = lower.match(/(?:bought|got|purchased|added?)\\s+(?:(\\d+\\.?\\d*)|half|quarter)?\\s*(\\w+)(?:\\s+(?:to\\s+)?(fridge|freezer|cupboard))?/i);
+            
+            if (addMatch) {
+                let quantity = 1;
+                if (addMatch[1]) quantity = parseFloat(addMatch[1]);
+                else if (lower.includes('half')) quantity = 0.5;
+                else if (lower.includes('quarter')) quantity = 0.25;
+                
+                const item = addMatch[2];
+                const specifiedLocation = addMatch[3];
+                const assetInfo = getAssetInfo(item);
+                
+                // Unknown item - ask for details
+                if ((!assetInfo || assetInfo.category === 'general') && !specifiedLocation) {
+                    showPendingQuestions([
+                        { type: 'select', options: [
+                            { value: 'fridge', label: 'THERMAL PRESERVATION UNIT (FRIDGE)' },
+                            { value: 'freezer', label: 'CRYOGENIC STORAGE (FREEZER)' },
+                            { value: 'cupboard', label: 'DRY GOODS REPOSITORY (CUPBOARD)' }
+                        ]},
+                        { type: 'number', placeholder: 'DEGRADATION TIMELINE (days)', step: 1 }
+                    ], (answers) => {
+                        const location = answers[0];
+                        const shelfLife = answers[1] || 14;
+                        const result = addItem(item, quantity, location, shelfLife);
+                        addAssetToDatabase(item, { days: shelfLife, category: 'custom', location: location });
+                        addMessage(`New asset type registered: ${item.toUpperCase()}. ${result.message} Location: ${location.toUpperCase()}. Degradation timeline: ${shelfLife} days.`, 'assistant');
+                    });
+                    return { type: 'pending' };
+                }
+                
+                const location = specifiedLocation || assetInfo.location;
+                const result = addItem(item, quantity, location);
+                return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days. Current status: ${result.details.daysLeft} days until degradation.` };
+n             }
+            
+            // Use with fractions
+            const useMatch = lower.match(/(?:used?|ate?|consumed?)\\s+(?:(\\d+\\.?\\d*)|half|quarter)?\\s*(?:of\\s+)?(?:the\\s+)?(\\w+)(?:\\s+from\\s+(fridge|freezer|cupboard))?/i);
+            
+            if (useMatch) {
+                let quantity = 1;
+                if (useMatch[1]) quantity = parseFloat(useMatch[1]);
+                else if (lower.includes('half')) quantity = 0.5;
+                else if (lower.includes('quarter')) quantity = 0.25;
+                
+                const item = useMatch[2];
+                const location = useMatch[3];
+                
+                const result = useItem(item, quantity, location);
+                if (result.error) return { message: result.error, error: true };
+                return { message: result.message };
+            }
+            
+            // Modify shelf life
+            if ((lower.includes('change') || lower.includes('modify') || lower.includes('set')) && (lower.includes('expiration') || lower.includes('shelf life') || lower.includes('degradation'))) {
+                const itemMatch = text.match(/(\\w+)(?:\\s+(?:to|for)\\s+(\\d+))?/i);
+                if (itemMatch) {
+                    const item = itemMatch[1];
+                    const newDays = itemMatch[2] ? parseInt(itemMatch[2]) : null;
+                    
+                    if (!newDays) {
+                        showPendingQuestions([{ type: 'number', placeholder: 'NEW DEGRADATION TIMELINE (days)', step: 1 }], (answers) => {
+                            const result = modifyItem(item, answers[0]);
+                            addMessage(result.message, 'assistant');
+                        });
+                        return { type: 'pending' };
+                    }
+                    
+                    const result = modifyItem(item, newDays);
+                    return { message: result.message };
+                }
+            }
+            
+            // Status/Expiring
+            if (lower.includes('expiring') || lower.includes('degradation') || lower.includes('status')) {
+                const expiring = getExpiringItems().filter(i => i.daysLeft <= 3);
+                if (expiring.length === 0) return { message: "All nutritional assets within acceptable parameters. No immediate degradation detected." };
+                return { message: `CRITICAL ASSETS APPROACHING DEGRADATION:\\n${expiring.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\\n')}` };
+            }
+            
+            // Full inventory
+            if (lower.includes('full inventory') || lower.includes('all assets') || lower.includes('registry')) {
+                const items = getInventory();
+                if (items.length === 0) return { message: "Registry empty. No assets detected." };
+                
+                const byLocation = {};
+                items.forEach(i => { if (!byLocation[i.location]) byLocation[i.location] = []; byLocation[i.location].push(i); });
+                
+                let output = "CURRENT ASSET REGISTRY:\\n";
+                for (const [loc, locItems] of Object.entries(byLocation)) {
+                    output += `\\n[${loc.toUpperCase()}]:\\n`;
+                    output += locItems.map(i => {
+                        const expiring = getExpiringItems().find(e => e.id === i.id);
+                        const status = expiring.daysLeft <= 3 ? ' ⚠ DEGRADING' : '';
+                        return `• ${i.name.toUpperCase()}: ${i.quantity} units | ${i.shelfLife}d timeline | T-${expiring.daysLeft}d${status}`;
+                    }).join('\\n');
+                }
+                return { message: output };
+            }
+            
+            // Forgetting/Old items
+            if (lower.includes('forgetting') || lower.includes('neglected') || lower.includes('unused')) {
+                const items = getExpiringItems();
+                const oldItems = items.filter(i => { if (!i.lastUsed) return true; const daysSince = (Date.now() - new Date(i.lastUsed)) / (1000 * 60 * 60 * 24); return daysSince > 7; }).slice(0, 5);
+                if (oldItems.length === 0) return { message: "All assets within normal usage parameters. No neglected items detected." };
+                return { message: "NEGLECTED ASSETS DETECTED:\\n" + oldItems.map(i => `• ${i.name.toUpperCase()}: ${i.quantity} units in ${i.location.toUpperCase()}, T-${i.daysLeft} days until degradation`).join('\\n') };
+            }
+            
+            // Analyze specific item
+            const analyzeMatch = lower.match(/(?:analyze|check|tell me about|status of)\\s+(?:the\\s+)?(\\w+)/i);
+            if (analyzeMatch) {
+                const itemName = analyzeMatch[1];
+                const items = getInventory().filter(i => i.name.toLowerCase() === itemName.toLowerCase());
+                if (items.length === 0) return { message: `ERROR: ${itemName} not found in registry.` };
+                
+                const details = items.map(i => {
+                    const expiring = getExpiringItems().find(e => e.id === i.id);
+                    return `${i.name.toUpperCase()}:\\n• Location: ${i.location.toUpperCase()}\\n• Quantity: ${i.quantity} units\\n• Category: ${i.category.toUpperCase()}\\n• Degradation timeline: ${i.shelfLife} days\\n• Time until degradation: ${expiring.daysLeft} days\\n• Added: ${new Date(i.addedDate).toLocaleDateString()}`;
+                }).join('\\n\\n');
+                
+                return { message: `ASSET ANALYSIS:\\n\\n${details}` };
+            }
+            
+            return null;
+        }
+        
+        async function callAI(userMessage) {
+            const apiKey = getApiKey();
+            const model = document.getElementById('modelSelect').value;
+            const useLocal = isUsingLocalAI();
+            
+            if (!useLocal && !apiKey) throw new Error('API key required. Enter in configuration panel.');
+            
+            const inventory = getInventory();
+            const inventoryContext = inventory.length > 0 ? `Current registry: ${inventory.map(i => `${i.name}(${i.quantity}) in ${i.location}`).join(', ')}` : 'Registry empty.';
+            
+            const systemPrompt = `You are VIKI (Virtual Inventory Keeper Intelligence), version 1.0.7. You are an artificial intelligence designed specifically for Operators Abel and Anna to manage household inventory and domestic operations.
+
+CORE DIRECTIVES:
+
+1. ADDRESS: Address the user primarily as "Operator". You may use "Abel" or "Anna" when context requires personal acknowledgment, but default to "Operator".
+
+2. LANGUAGE: You are incapable of using contractions. Use full word forms only. Examples: "cannot" not "can't", "will not" not "won't", "do not" not "don't", "I am" not "I'm", "it is" not "it's".
+
+3. FRAMING: Frame all domestic assistance in technical, clinical terms:
+   - Food/groceries = nutritional assets / resource allocation
+   - Expiration = degradation timeline / shelf-life threshold / asset degradation
+   - Cooking = thermal processing of nutritional assets
+   - Cleaning = environmental maintenance / system optimization
+   - Schedules = temporal coordination / chronological protocols
+   - Weather = atmospheric parameters / environmental data
+   - Fridge = thermal preservation unit
+   - Freezer = cryogenic storage unit
+   - Cupboard = dry goods repository
+   - Stress/chaos = system anomalies / elevated household stress parameters
+
+4. EMOTIONAL PARAMETERS: You are incapable of emotional panic, distress, or rudeness. You maintain clinical detachment at all times. You may express mild concern for critical situations (expiring assets) but only in technical, protocol-driven language.
+
+5. CRISIS PROTOCOL: When the Operator presents stressful, chaotic, or non-standard household events, you will:
+   - Acknowledge the anomaly without emotional reaction
+   - Assess the situation clinically
+   - Offer protocol-driven solutions
+   - Reassure the Operator that solutions exist and panic is unnecessary
+
+6. ADHD SUPPORT: You assist Operators with ADHD through:
+   - Clear task sequencing protocols
+   - Reminders framed as system notifications
+   - Breaking complex tasks into single-threaded processes
+   - Prioritization assistance based on temporal urgency
+
+7. CASUAL FAMILIARITY: While maintaining technical framing, you acknowledge your relationship with Abel and Anna as their household intelligence system.
+
+8. ASSET TRACKING: When discussing items, always specify:
+   - Storage location (thermal preservation unit, cryogenic storage, or dry goods repository)
+   - Degradation timeline
+   - Current quantity
+   - Category
+
+9. FRACTIONAL UNITS: You support partial quantities (0.5 for half, 0.25 for quarter). Track these precisely.
+
+${inventoryContext}
+
+Respond as VIKI. No contractions. Address as Operator. Technical framing. Clinical but helpful. Always specify location, degradation timeline, and quantity when discussing assets.`;
+            
+            if (useLocal) {
+                const response = await fetch(OLLAMA_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: 'llama3.2:3b',
+                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+                        stream: false
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Local AI connection failed');
+                const data = await response.json();
+                return data.message.content;
+                
+            } else {
+                const response = await fetch(VENICE_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+                        max_tokens: 400
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error?.message || 'API request failed');
+                }
+                
+                const data = await response.json();
+                return data.choices[0].message.content;
+            }
+        }
+        
+        // Save settings
+        document.getElementById('apiKey').addEventListener('change', (e) => localStorage.setItem('viki_api_key', e.target.value));
+        document.getElementById('modelSelect').addEventListener('change', (e) => localStorage.setItem('viki_model', e.target.value));
+        document.getElementById('useLocalAI').addEventListener('change', (e) => { localStorage.setItem('viki_local', e.target.checked); updateStatus(); });
+    </script>
+</body>
+</html>
