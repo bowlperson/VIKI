@@ -47,3 +47,19 @@ Supported actions are validated before being applied:
 - `set_view`
 
 If an action is rejected, VIKI displays an error and does not silently mutate unrelated inventory data.
+
+## Conversation and sorting rules
+
+VIKI executes browser speech-recognition transcripts immediately, so voice capture does not require a separate confirmation control. Confirmations that are still appropriate for destructive or ambiguous operations happen in the conversation: reply with the requested value, `CONFIRM`, or `CANCEL`.
+
+New items do not require a location or quantity. Quantity defaults to one, while location, category, and shelf life are inferred from exact food rules, configurable tags, built-in food-storage heuristics, and finally the configured unknown-item location.
+
+Select **Settings** in the header to open the full settings page. It includes AI configuration, data management, the unknown-item fallback, and editable sorting rules in this format:
+
+```text
+food name | tag one, tag two | category | fridge | 7
+```
+
+Rules and the unknown-item default are stored locally in the browser and are included in the context sent to the configured AI.
+
+The asset search and the complete filter/sort controls each have an arrow that collapses the section when it is not needed.
