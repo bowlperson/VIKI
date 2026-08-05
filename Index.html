@@ -678,6 +678,11 @@
         const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions';
         const OLLAMA_URL = 'http://localhost:11434/api/chat';
         const DEFAULT_API_KEY = 'VENICE_INFERENCE_KEY_SC9fuUJsuDDmCfMzvNlb8jmMDbdjJvlgnou2H7bPUx';
+        const AI_JSON_RESPONSE_FORMAT = '{ "reply": "...", "actions": [{ "type": "add_item", "name": "...", "quantity": 1, "location": "fridge", "shelfLife": 7 }] }';
+        const ALLOWED_AI_ACTION_TYPES = ['add_item', 'use_item', 'modify_item', 'set_filter', 'set_search'];
+        const ALLOWED_LOCATIONS = ['fridge', 'freezer', 'cupboard'];
+        const MIN_SHELF_LIFE_DAYS = 1;
+        const MAX_SHELF_LIFE_DAYS = 3650;
         
         // --- DATA STORAGE ---
         const DB_KEY = 'viki_inventory_v2';
@@ -894,8 +899,9 @@
         
         function filterInventory(filter) {
             currentFilter = filter;
-            document.querySelectorAll('.filter-tab').forEach(tab => tab.classList.remove('active'));
-            event.target.classList.add('active');
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.textContent.toLowerCase() === filter);
+            });
             renderInventory();
         }
         
@@ -1014,7 +1020,12 @@
             try {
                 const response = await callAI(text);
                 showTyping(false);
-                addMessage(response, 'assistant');
+                const aiResult = handleAIResponse(response);
+                addMessage(aiResult.reply, 'assistant');
+                if (aiResult.actions.length > 0) {
+                    const actionResults = applyAIActions(aiResult.actions);
+                    actionResults.forEach(result => addMessage(result.message, result.error ? 'error' : 'system'));
+                }
             } catch (error) {
                 showTyping(false);
                 addMessage(`Connection failed: ${error.message}`, 'error');
@@ -1059,7 +1070,7 @@
                 const location = specifiedLocation || assetInfo.location;
                 const result = addItem(item, quantity, location);
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days. Current status: ${result.details.daysLeft} days until degradation.` };
-n             }
+            }
             
             // Use with fractions
             const useMatch = lower.match(/(?:used?|ate?|consumed?)\\s+(?:(\\d+\\.?\\d*)|half|quarter)?\\s*(?:of\\s+)?(?:the\\s+)?(\\w+)(?:\\s+from\\s+(fridge|freezer|cupboard))?/i);
@@ -1151,6 +1162,111 @@ n             }
             return null;
         }
         
+        function parseAIResponse(rawResponse) {
+            const trimmed = rawResponse.trim();
+            const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+            const jsonText = fencedMatch ? fencedMatch[1].trim() : trimmed;
+            const parsed = JSON.parse(jsonText);
+
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('AI response root must be an object.');
+            }
+            if (typeof parsed.reply !== 'string') {
+                throw new Error('AI response must include a reply string.');
+            }
+            if (parsed.actions === undefined) parsed.actions = [];
+            if (!Array.isArray(parsed.actions)) {
+                throw new Error('AI response actions must be an array.');
+            }
+
+            return parsed;
+        }
+
+        function handleAIResponse(rawResponse) {
+            try {
+                const parsed = parseAIResponse(rawResponse);
+                return { reply: parsed.reply, actions: parsed.actions };
+            } catch (error) {
+                return {
+                    reply: `${rawResponse}\n\n[Advisory mode only: AI response was not valid JSON. Inventory was not modified.]`,
+                    actions: []
+                };
+            }
+        }
+
+        function normalizeAIAction(action) {
+            return {
+                ...action,
+                type: typeof action.type === 'string' ? action.type.trim().toLowerCase() : '',
+                name: typeof action.name === 'string' ? action.name.trim() : '',
+                location: typeof action.location === 'string' ? action.location.trim().toLowerCase() : null,
+                quantity: action.quantity === undefined ? 1 : Number(action.quantity),
+                shelfLife: action.shelfLife === undefined ? undefined : Number(action.shelfLife),
+                category: typeof action.category === 'string' ? action.category.trim().toLowerCase() : null,
+                value: typeof action.value === 'string' ? action.value.trim().toLowerCase() : action.value
+            };
+        }
+
+        function validateAIAction(action) {
+            if (!action || typeof action !== 'object' || Array.isArray(action)) return 'Action must be an object.';
+            const normalized = normalizeAIAction(action);
+
+            if (!ALLOWED_AI_ACTION_TYPES.includes(normalized.type)) return `Unsupported action type: ${action.type}`;
+            if (['add_item', 'use_item', 'modify_item'].includes(normalized.type) && !normalized.name) return 'Action requires a non-empty item name.';
+            if (normalized.location && !ALLOWED_LOCATIONS.includes(normalized.location)) return `Invalid location: ${normalized.location}`;
+            if (['add_item', 'use_item'].includes(normalized.type) && (!Number.isFinite(normalized.quantity) || normalized.quantity <= 0)) return 'Quantity must be a positive number.';
+            if (normalized.type === 'modify_item' && normalized.shelfLife === undefined) return 'modify_item requires shelfLife.';
+            if (['add_item', 'modify_item'].includes(normalized.type)) {
+                if (normalized.shelfLife !== undefined && (!Number.isInteger(normalized.shelfLife) || normalized.shelfLife < MIN_SHELF_LIFE_DAYS || normalized.shelfLife > MAX_SHELF_LIFE_DAYS)) {
+                    return `Shelf-life must be an integer from ${MIN_SHELF_LIFE_DAYS} to ${MAX_SHELF_LIFE_DAYS} days.`;
+                }
+            }
+            if (normalized.type === 'set_filter' && !['all', ...ALLOWED_LOCATIONS].includes(normalized.value)) return 'Filter value must be all, fridge, freezer, or cupboard.';
+
+            return null;
+        }
+
+        function confirmDestructiveAIAction(action) {
+            if (action.type === 'use_item') {
+                return window.confirm(`Confirm inventory reduction: consume ${action.quantity} unit(s) of ${action.name}${action.location ? ` from ${action.location}` : ''}?`);
+            }
+            return true;
+        }
+
+        function applyAIActions(actions) {
+            if (!Array.isArray(actions)) return [{ error: true, message: 'AI actions rejected: actions payload is not an array.' }];
+
+            return actions.map(originalAction => {
+                const validationError = validateAIAction(originalAction);
+                if (validationError) return { error: true, message: `AI action rejected: ${validationError}` };
+
+                const action = normalizeAIAction(originalAction);
+                if (!confirmDestructiveAIAction(action)) return { error: true, message: `AI action cancelled: ${action.type} for ${action.name}.` };
+
+                if (action.type === 'add_item') {
+                    const result = addItem(action.name, action.quantity, action.location, action.shelfLife, action.category);
+                    return { message: `AI action applied: ${result.message}` };
+                }
+                if (action.type === 'use_item') {
+                    const result = useItem(action.name, action.quantity, action.location);
+                    return result.error ? { error: true, message: result.error } : { message: `AI action applied: ${result.message}` };
+                }
+                if (action.type === 'modify_item') {
+                    const result = modifyItem(action.name, action.shelfLife, action.location);
+                    return result.error ? { error: true, message: result.error } : { message: `AI action applied: ${result.message}` };
+                }
+                if (action.type === 'set_filter') {
+                    filterInventory(action.value);
+                    return { message: `AI action applied: filter set to ${action.value}.` };
+                }
+                if (action.type === 'set_search') {
+                    return { message: 'AI action acknowledged: search setter is not implemented yet.' };
+                }
+
+                return { error: true, message: `AI action rejected: no handler for ${action.type}.` };
+            });
+        }
+
         async function callAI(userMessage) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
@@ -1205,9 +1321,13 @@ CORE DIRECTIVES:
 
 9. FRACTIONAL UNITS: You support partial quantities (0.5 for half, 0.25 for quarter). Track these precisely.
 
+10. STRICT JSON RESPONSE FORMAT: Always return only valid JSON and no Markdown, prose outside JSON, or code fences. Use this exact shape: ${AI_JSON_RESPONSE_FORMAT}. The reply field contains user-facing advisory text. The actions field is an array. Use an empty actions array for advisory-only responses.
+
+11. INVENTORY ACTION PROTOCOL: When the Operator wants inventory changes, you must encode the requested mutation in actions instead of claiming it was completed in reply text only. Allowed action types: add_item, use_item, modify_item, set_filter, set_search. add_item requires name, positive quantity, location, and optional shelfLife/category. use_item requires name, positive quantity, and optional location. modify_item requires name, shelfLife, and optional location. set_filter uses value: all, fridge, freezer, or cupboard. Allowed locations are fridge, freezer, cupboard.
+
 ${inventoryContext}
 
-Respond as VIKI. No contractions. Address as Operator. Technical framing. Clinical but helpful. Always specify location, degradation timeline, and quantity when discussing assets.`;
+Respond as VIKI. No contractions. Address as Operator. Technical framing. Clinical but helpful. Always specify location, degradation timeline, and quantity when discussing assets. Return strict JSON only.`;
             
             if (useLocal) {
                 const response = await fetch(OLLAMA_URL, {
