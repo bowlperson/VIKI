@@ -310,6 +310,18 @@
             font-size: 0.8rem;
         }
 
+        .item-qty, .item-timer {
+            cursor: pointer;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .item-qty:hover, .item-timer:hover,
+        .item-qty:focus-visible, .item-timer:focus-visible {
+            outline: 1px dashed var(--accent-cyan);
+            outline-offset: 2px;
+        }
+
         .item-location {
             font-size: 0.65rem;
             padding: 2px 6px;
@@ -564,6 +576,16 @@
             color: var(--accent-amber);
         }
 
+        .message.powered {
+            border-left-color: var(--accent-amber);
+            color: var(--terminal-fg);
+        }
+
+        .message.powered::before {
+            content: '> VIKI [POWERED]: ';
+            color: var(--accent-amber);
+        }
+
         .message.system {
             color: var(--accent-dim);
             font-style: italic;
@@ -641,7 +663,7 @@
             border-bottom-color: var(--accent-cyan);
         }
 
-        .send-btn, .mic-btn {
+        .send-btn, .mic-btn, .mute-btn {
             background: transparent;
             border: 1px solid var(--accent-amber);
             color: var(--accent-amber);
@@ -652,7 +674,7 @@
             transition: all 0.2s;
         }
 
-        .send-btn:hover, .mic-btn:hover:not(:disabled) {
+        .send-btn:hover, .mic-btn:hover:not(:disabled), .mute-btn:hover {
             background: var(--accent-amber);
             color: #000;
         }
@@ -662,6 +684,18 @@
             color: var(--accent-cyan);
             min-width: 44px;
             padding: 6px 10px;
+        }
+
+        .mute-btn {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            min-width: 78px;
+            padding: 6px 10px;
+        }
+
+        .mute-btn[aria-pressed="true"] {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
         }
 
         .mic-btn.listening {
@@ -764,7 +798,7 @@
 
     <div class="header">
         <div class="header-left">
-            <div class="logo">VIKI</div>
+            <div class="logo" id="vikiLogo">VIKI</div>
             <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.0.7 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
@@ -881,6 +915,7 @@
                     <span class="input-prompt">></span>
                     <input type="text" id="messageInput" placeholder="Enter command or query..." onkeypress="handleKeyPress(event)">
                     <button class="mic-btn" id="micButton" onclick="toggleVoiceInput()" aria-label="Start voice input" title="Start voice input">MIC</button>
+                    <button class="mute-btn" id="muteButton" type="button" onclick="toggleSpeechMute()" aria-label="Mute VIKI speech" aria-pressed="false" title="Mute or unmute VIKI speech">VOICE ON</button>
                     <button class="send-btn" onclick="sendMessage()">EXECUTE</button>
                 </div>
                 <div class="voice-status" id="voiceStatus">VOICE: STANDBY</div>
@@ -916,6 +951,26 @@
                         <input type="checkbox" id="useLocalAI">
                         <label class="toggle-label" for="useLocalAI">LOCAL_MODE [OLLAMA]</label>
                     </div>
+                </section>
+                <section class="settings-section">
+                    <div class="config-title">// VOICE SYNTHESIS</div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="speechEnabled" checked>
+                        <label class="toggle-label" for="speechEnabled">SPEAK VIKI RESPONSES</label>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="speechVoice">SYSTEM_VOICE</label>
+                        <select class="config-select" id="speechVoice"><option value="">BROWSER DEFAULT</option></select>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="speechRate">SPEECH_RATE</label>
+                        <input class="config-input" type="range" id="speechRate" min="0.6" max="1.5" step="0.1" value="1">
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="speechVolume">VOLUME</label>
+                        <input class="config-input" type="range" id="speechVolume" min="0" max="1" step="0.1" value="1">
+                    </div>
+                    <div class="config-help" id="speechSupportNote">Uses voices installed in this browser or operating system.</div>
                 </section>
                 <section class="settings-section rules-section">
                     <div class="config-title">// TAGS &amp; PRESET INFO</div>
@@ -973,6 +1028,7 @@
         const CATEGORIES_KEY = 'viki_categories';
         const FALLBACK_LOCATION_KEY = 'viki_fallback_location';
         const MATCHING_PRIORITY_KEY = 'viki_matching_priority';
+        const SPEECH_SETTINGS_KEY = 'viki_speech_settings';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -1007,6 +1063,9 @@
         let recognition = null;
         let isListening = false;
         let currentVoiceState = 'standby';
+        let poweredMode = false;
+        let speechMuted = false;
+        let availableSpeechVoices = [];
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -1029,6 +1088,7 @@
             renderInventory();
             checkExpiringItems();
             initializeVoiceInput();
+            initializeSpeechSynthesis();
             updateDeviceDateTime();
             renderBootMessages();
             setInterval(updateDeviceDateTime, 1000);
@@ -1286,6 +1346,16 @@
             }
         }
 
+        function setPoweredState(active) {
+            poweredMode = active;
+            const logo = document.getElementById('vikiLogo');
+            const aiStatus = document.getElementById('aiStatus');
+            const aiStatusText = document.getElementById('aiStatusText');
+            if (logo) logo.textContent = active ? 'VIKI [POWERED]' : 'VIKI';
+            if (aiStatus) aiStatus.classList.toggle('active', active || isUsingLocalAI());
+            if (aiStatusText) aiStatusText.textContent = active ? 'NEURAL_LINK' : (isUsingLocalAI() ? 'LOCAL' : 'VENICE_API');
+        }
+
         // --- INVENTORY FUNCTIONS ---
 
         function getInventory() {
@@ -1534,6 +1604,68 @@
             renderInventory();
         }
 
+        function beginInventoryValueEdit(item, field) {
+            if (pendingQuestions) {
+                addMessage('Finish or cancel the current question before editing another asset.', 'assistant');
+                return;
+            }
+            const isQuantity = field === 'quantity';
+            const label = isQuantity ? 'quantity' : 'degradation timeline';
+            const currentValue = isQuantity ? item.quantity : item.shelfLife;
+            showPendingQuestions([{ type: 'number', placeholder: `NEW ${label.toUpperCase()}`, step: isQuantity ? 0.25 : 1 }], (answers) => {
+                const value = Number(answers[0]);
+                const valid = Number.isFinite(value) && (isQuantity ? value >= 0 : value > 0);
+                if (!valid) {
+                    addMessage(`I could not set ${item.name}'s ${label}. Enter ${isQuantity ? 'zero or a positive number' : 'a number greater than zero'}.`, 'error');
+                    return;
+                }
+                const items = getInventory();
+                const target = items.find(candidate => String(candidate.id) === String(item.id));
+                if (!target) {
+                    addMessage(`${item.name} is no longer in the registry.`, 'error');
+                    return;
+                }
+                const previous = isQuantity ? target.quantity : target.shelfLife;
+                target[field] = value;
+                target.lastModified = getDeviceNow().toISOString();
+                saveInventory(items);
+                addMessage(`Updated ${target.name} ${label} from ${previous} to ${value}${isQuantity ? ` ${target.unit || 'unit'}(s)` : ' days'}.`, 'assistant');
+            }, { summary: `${item.name.toUpperCase()} currently has ${currentValue}${isQuantity ? ` ${item.unit || 'unit'}(s)` : ' degradation days'}. Enter the new value or say CANCEL.` });
+        }
+
+        function attachLongPressEditor(element, item, field) {
+            let timer = null;
+            let startX = 0;
+            let startY = 0;
+            const cancel = () => {
+                if (timer) clearTimeout(timer);
+                timer = null;
+            };
+            element.tabIndex = 0;
+            element.title = `Long press to edit ${field === 'quantity' ? 'quantity' : 'degradation days'}`;
+            element.setAttribute('aria-label', `${element.textContent}. Long press or press Enter to edit.`);
+            element.addEventListener('pointerdown', event => {
+                startX = event.clientX;
+                startY = event.clientY;
+                cancel();
+                timer = setTimeout(() => {
+                    timer = null;
+                    beginInventoryValueEdit(item, field);
+                }, 650);
+            });
+            element.addEventListener('pointermove', event => {
+                if (Math.abs(event.clientX - startX) > 10 || Math.abs(event.clientY - startY) > 10) cancel();
+            });
+            ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => element.addEventListener(type, cancel));
+            element.addEventListener('click', event => event.stopPropagation());
+            element.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    beginInventoryValueEdit(item, field);
+                }
+            });
+        }
+
         function renderInventory() {
             const list = document.getElementById('inventoryList');
             let items = getVisibleInventoryItems();
@@ -1591,6 +1723,7 @@
                 const quantity = document.createElement('div');
                 quantity.className = 'item-qty';
                 quantity.textContent = `${item.quantity} ${item.unit || 'unit'}(s)`;
+                attachLongPressEditor(quantity, item, 'quantity');
 
                 itemHeader.append(identity, quantity);
 
@@ -1601,6 +1734,7 @@
                 const timer = document.createElement('div');
                 timer.classList.add('item-timer', timerClass);
                 timer.textContent = `${timerText} | DEGRADATION: ${item.shelfLife} days`;
+                attachLongPressEditor(timer, item, 'shelfLife');
 
                 inventoryItem.append(itemHeader, meta, timer);
                 list.appendChild(inventoryItem);
@@ -1609,10 +1743,99 @@
 
         // --- CHAT INTERFACE ---
 
+        function getSpeechSettings() {
+            try {
+                return { enabled: true, muted: false, voice: '', rate: 1, volume: 1, ...JSON.parse(localStorage.getItem(SPEECH_SETTINGS_KEY) || '{}') };
+            } catch (error) {
+                return { enabled: true, muted: false, voice: '', rate: 1, volume: 1 };
+            }
+        }
+
+        function saveSpeechSettings() {
+            const settings = {
+                enabled: document.getElementById('speechEnabled').checked,
+                muted: speechMuted,
+                voice: document.getElementById('speechVoice').value,
+                rate: Number(document.getElementById('speechRate').value),
+                volume: Number(document.getElementById('speechVolume').value)
+            };
+            localStorage.setItem(SPEECH_SETTINGS_KEY, JSON.stringify(settings));
+            if (!settings.enabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+            updateMuteButton();
+        }
+
+        function populateSpeechVoices() {
+            if (!('speechSynthesis' in window)) return;
+            availableSpeechVoices = window.speechSynthesis.getVoices();
+            const select = document.getElementById('speechVoice');
+            const selected = getSpeechSettings().voice;
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'BROWSER DEFAULT';
+            const options = availableSpeechVoices.map(voice => {
+                const option = document.createElement('option');
+                option.value = voice.name;
+                option.textContent = `${voice.name.toUpperCase()} [${voice.lang}]`;
+                return option;
+            });
+            select.replaceChildren(defaultOption, ...options);
+            select.value = availableSpeechVoices.some(voice => voice.name === selected) ? selected : '';
+        }
+
+        function updateMuteButton() {
+            const button = document.getElementById('muteButton');
+            const enabled = document.getElementById('speechEnabled').checked;
+            const muted = speechMuted || !enabled;
+            button.textContent = muted ? 'VOICE OFF' : 'VOICE ON';
+            button.setAttribute('aria-pressed', String(muted));
+            button.setAttribute('aria-label', muted ? 'Unmute VIKI speech' : 'Mute VIKI speech');
+        }
+
+        function toggleSpeechMute() {
+            speechMuted = !speechMuted;
+            if (speechMuted && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+            saveSpeechSettings();
+        }
+
+        function speakMessage(text) {
+            if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+            const settings = getSpeechSettings();
+            if (!settings.enabled || speechMuted) return;
+            const utterance = new SpeechSynthesisUtterance(String(text).replace(/[_*`#]/g, ' '));
+            utterance.rate = settings.rate;
+            utterance.volume = settings.volume;
+            utterance.pitch = 0.9;
+            utterance.voice = availableSpeechVoices.find(voice => voice.name === settings.voice) || null;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function initializeSpeechSynthesis() {
+            const settings = getSpeechSettings();
+            speechMuted = settings.muted;
+            document.getElementById('speechEnabled').checked = settings.enabled;
+            document.getElementById('speechRate').value = settings.rate;
+            document.getElementById('speechVolume').value = settings.volume;
+            if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+                document.getElementById('speechEnabled').disabled = true;
+                document.getElementById('speechVoice').disabled = true;
+                document.getElementById('muteButton').disabled = true;
+                document.getElementById('speechSupportNote').textContent = 'Speech synthesis is not supported by this browser.';
+                document.getElementById('muteButton').textContent = 'NO VOICE';
+                return;
+            }
+            populateSpeechVoices();
+            window.speechSynthesis.addEventListener('voiceschanged', populateSpeechVoices);
+            ['speechEnabled', 'speechVoice', 'speechRate', 'speechVolume'].forEach(id => {
+                document.getElementById(id).addEventListener('change', saveSpeechSettings);
+            });
+            updateMuteButton();
+        }
+
         function addMessage(text, type = 'assistant') {
             const chatArea = document.getElementById('chatArea');
             const msg = document.createElement('div');
-            msg.className = `message ${type}`;
+            const renderedType = type === 'assistant' && poweredMode ? 'powered' : type;
+            msg.className = `message ${renderedType}`;
 
             String(text).split('\n').forEach((line, idx) => {
                 if (idx > 0) msg.appendChild(document.createElement('br'));
@@ -1621,6 +1844,7 @@
 
             chatArea.appendChild(msg);
             chatArea.scrollTop = chatArea.scrollHeight;
+            if (renderedType === 'assistant' || renderedType === 'powered' || renderedType === 'error') speakMessage(text);
         }
 
         function showTyping(show) {
@@ -1746,7 +1970,7 @@
             const choices = questions.map((question, index) => question.type === 'select'
                 ? `Choice ${index + 1}: ${question.options.map(option => option.label).join(' / ')}`
                 : `Value ${index + 1}: ${question.placeholder || 'number'}`).join('\n');
-            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply with the requested value, CONFIRM to accept VIKI's best match, or CANCEL.`, 'assistant');
+            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply YES or CONFIRM to accept VIKI's best match, provide the requested value, or reply CANCEL.`, config.messageType || 'assistant');
         }
 
         function showPendingQuestions(questions, callback, config = {}) {
@@ -1764,13 +1988,16 @@
             if (!pendingQuestions) return;
             const activePending = pendingQuestions;
             const answers = activePending.questions.map(q => {
-                if (q.type === 'number') return parseFloat(reply) || 1;
+                if (q.type === 'number') {
+                    const parsed = parseFloat(reply);
+                    return Number.isFinite(parsed) ? parsed : 1;
+                }
                 const normalizedReply = reply.toLowerCase();
                 const match = q.options.find(option => normalizedReply.includes(String(option.value).toLowerCase()) || normalizedReply.includes(option.label.toLowerCase()));
                 return (match || q.options[0]).value;
             });
             pendingQuestions = null;
-            activePending.callback(answers);
+            activePending.callback(answers, reply);
         }
 
         function cancelPendingQuestions() {
@@ -1827,8 +2054,22 @@
 
             const localResponse = await handleLocalCommand(text);
             if (localResponse) {
+                if (localResponse.type === 'pending') {
+                    showTyping(false);
+                    return;
+                }
+                if (localResponse.error) {
+                    try {
+                        const response = await callAI(`The request "${text}" did not match a local command because: "${localResponse.message}". Continue naturally as VIKI. If there is a likely intended command, ask "Did you mean ...?" and return the corresponding action so a simple yes can confirm it. Do not expose internal routing or mention AI assistance.`);
+                        showTyping(false);
+                        addMessage(response, 'powered');
+                    } catch (error) {
+                        showTyping(false);
+                        addMessage(`${localResponse.message}\nI could not extend interpretation: ${error.message}`, 'error');
+                    }
+                    return;
+                }
                 showTyping(false);
-                if (localResponse.type === 'pending') return;
                 addMessage(localResponse.message, localResponse.error ? 'error' : 'assistant');
                 return;
             }
@@ -1836,7 +2077,7 @@
             try {
                 const response = await callAI(text);
                 showTyping(false);
-                addMessage(response, 'assistant');
+                addMessage(response, 'powered');
             } catch (error) {
                 showTyping(false);
                 addMessage(`Connection failed: ${error.message}`, 'error');
@@ -1951,6 +2192,10 @@
             if (addParsed) {
                 const item = addParsed.item;
                 const assetInfo = getAssetInfo(item);
+                if (assetInfo.inferred) {
+                    await recommendUnknownItem(addParsed, assetInfo);
+                    return { type: 'pending' };
+                }
                 const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note);
                 const inference = !addParsed.location ? ' VIKI selected this location using saved sorting rules and preset food logic.' : '';
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.${inference} Current status: ${result.details.daysLeft} days until degradation.` };
@@ -2067,6 +2312,20 @@
 
 
             // Explicit removal
+            const clearInventoryMatch = lower.match(/^(?:(?:please|can you|could you|would you)\s+)*(?:delete|remove|clear|discard|empty|wipe|get rid of)\s+(?:(?:out|away|all of)\s+)?(?:everything|all|the whole inventory|the entire inventory|all items|all assets)(?:\s+(?:from|in)\s+(?:the\s+)?(?:inventory|registry))?[.!?]*$/i);
+            if (clearInventoryMatch) {
+                const itemCount = getInventory().length;
+                if (itemCount === 0) return { message: 'The registry is already empty.' };
+                return withOperationConfirmation({
+                    summary: `Did you mean remove all ${itemCount} assets from the registry? This cannot be undone.`,
+                    confirmText: 'CONFIRM CLEAR REGISTRY',
+                    cancelMessage: 'Understood. I left the registry unchanged.'
+                }, () => {
+                    saveInventory([]);
+                    addMessage(`Confirmed. I removed all ${itemCount} assets from the registry.`, 'assistant');
+                });
+            }
+
             const removeMatch = lower.match(/(?:delete|remove|discard|throw away)\s+(?:the\s+)?(.+?)(?:\s+from\s+(fridge|freezer|cupboard))?$/i);
             if (removeMatch) {
                 const item = normalizeItemName(removeMatch[1]);
@@ -2174,7 +2433,7 @@
             if (!Array.isArray(payload.actions)) payload.actions = [];
             payload.actions.forEach((action, index) => {
                 if (!action || typeof action !== 'object') throw new Error(`Action ${index + 1} malformed.`);
-                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'set_view'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
+                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
                 if (['add_item', 'consume_item', 'modify_item', 'remove_item'].includes(action.type) && !action.name) throw new Error(`Action ${index + 1} missing name.`);
             });
             return payload;
@@ -2212,6 +2471,11 @@
                 saveInventory(remaining);
                 return `Removed ${action.name} from registry.`;
             }
+            if (action.type === 'clear_inventory') {
+                const itemCount = getInventory().length;
+                saveInventory([]);
+                return `Removed all ${itemCount} assets from the registry.`;
+            }
             if (action.type === 'set_view') {
                 setInventoryView(action.view || {});
                 return 'Display parameters updated from AI action.';
@@ -2220,10 +2484,11 @@
         }
 
         function getActionConfirmationReasons(action) {
-            if (!['consume_item', 'modify_item', 'remove_item'].includes(action.type)) return [];
+            if (!['consume_item', 'modify_item', 'remove_item', 'clear_inventory'].includes(action.type)) return [];
             const matches = action.name ? getMatchingItems(action.name, action.location || null) : [];
             const quantity = Number(action.quantity ?? 1);
             const reasons = ['AI registry mutations require explicit confirmation'];
+            if (action.type === 'clear_inventory') reasons.push('operation would delete the entire registry');
             if (action.type === 'remove_item') reasons.push('operation would delete an item');
             if (action.type === 'consume_item' && matches.some(item => item.quantity === quantity)) reasons.push('operation would consume all remaining quantity');
             if (!action.location && matches.length > 1) reasons.push('operation matches multiple assets');
@@ -2243,7 +2508,8 @@
                         questions.push(buildItemSelectionQuestion(matches));
                     }
                     const options = matches.length > 1 ? `\nOptions:\n${matches.map(item => `  ${formatInventoryOption(item)}`).join('\n')}` : '';
-                    return `${index + 1}. ${entry.action.type} ${entry.action.name || ''} — ${entry.reasons.join('; ')}.${options}`;
+                    const actionLabel = entry.action.type === 'clear_inventory' ? 'remove every asset' : `${entry.action.type} ${entry.action.name || ''}`;
+                    return `${index + 1}. ${actionLabel} — ${entry.reasons.join('; ')}.${options}`;
                 }).join('\n\n');
 
                 withOperationConfirmation({
@@ -2271,7 +2537,70 @@
             return [payload.message, ...results.map(result => `ACTION_LOG: ${result}`)].join('\n');
         }
 
-        async function callAI(userMessage) {
+        async function recommendUnknownItem(parsed, defaultInfo) {
+            const defaultChoice = {
+                shelfLife: Number(defaultInfo.days) || 14,
+                location: parsed.location || defaultInfo.location || 'fridge',
+                category: defaultInfo.category || 'general'
+            };
+            let recommendation = null;
+            let aiMessage = '';
+
+            try {
+                const payload = await callAI(`UNFAMILIAR ASSET REVIEW: Determine a likely safe household storage location, category, and shelf life in days for "${parsed.item}". Consider the item name and ordinary food-storage knowledge. Return exactly one add_item action, but do not claim it has already been added.`, { apply: false });
+                const action = payload.actions.find(candidate => candidate.type === 'add_item');
+                const shelfLife = Number(action?.shelfLife);
+                if (action && Number.isFinite(shelfLife) && shelfLife > 0 && ['fridge', 'freezer', 'cupboard'].includes(action.location)) {
+                    recommendation = {
+                        shelfLife: Math.round(shelfLife),
+                        location: parsed.location || action.location,
+                        category: action.category || defaultChoice.category
+                    };
+                    aiMessage = payload.message;
+                } else {
+                    throw new Error('AI did not return a usable shelf-life recommendation.');
+                }
+            } catch (error) {
+                aiMessage = `Powered review unavailable: ${error.message}`;
+            }
+
+            const aiChoice = recommendation || defaultChoice;
+            const summary = [
+                `Unfamiliar asset: ${parsed.item.toUpperCase()}. No saved preset or heuristic matched.`,
+                `Powered assessment: ${recommendation ? `${aiChoice.shelfLife} days in ${aiChoice.location.toUpperCase()} (${aiChoice.category}). ${aiMessage}` : aiMessage}`,
+                `Standard VIKI rules would default to ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()} (${defaultChoice.category}).`,
+                'Reply POWERED or CONFIRM to use my assessment, DEFAULT to use the standard fallback, or reply with a number of days to override the timeline.'
+            ].join('\n');
+
+            showConfirmationPanel({
+                title: 'UNFAMILIAR ASSET REVIEW:',
+                summary,
+                messageType: 'powered',
+                questions: [{ type: 'select', options: [
+                    { value: 'ai', label: `POWERED (${aiChoice.shelfLife} DAYS)` },
+                    { value: 'default', label: `DEFAULT (${defaultChoice.shelfLife} DAYS)` }
+                ]}],
+                cancelMessage: `${parsed.item} was not added.`
+            }, (answers, rawReply) => {
+                const customDays = Number.parseFloat(rawReply);
+                const selected = answers[0] === 'default' ? defaultChoice : aiChoice;
+                const shelfLife = Number.isFinite(customDays) && customDays > 0 ? customDays : selected.shelfLife;
+                const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note);
+                const source = Number.isFinite(customDays) && customDays > 0 ? 'Operator override' : (answers[0] === 'default' ? 'Standard default' : 'Powered assessment');
+                addMessage(`${result.message} ${source}: ${shelfLife} day degradation timeline. Standard fallback was ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()}. You can change this later by specifying a new expiration timeline.`, 'assistant');
+            });
+        }
+
+        async function callAI(userMessage, options = {}) {
+            setPoweredState(true);
+            try {
+                return await requestAI(userMessage, options);
+            } finally {
+                setPoweredState(false);
+            }
+        }
+
+        async function requestAI(userMessage, { apply = true } = {}) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();
@@ -2299,7 +2628,8 @@
 
                 if (!response.ok) throw new Error('Local AI connection failed');
                 const data = await response.json();
-                return applyAIResponse(validateAIResponse(safeParseAIJson(data.message.content)));
+                const payload = validateAIResponse(safeParseAIJson(data.message.content));
+                return apply ? applyAIResponse(payload) : payload;
 
             } else {
                 const response = await fetch(VENICE_API_URL, {
@@ -2319,7 +2649,8 @@
                 }
 
                 const data = await response.json();
-                return applyAIResponse(validateAIResponse(safeParseAIJson(data.choices[0].message.content)));
+                const payload = validateAIResponse(safeParseAIJson(data.choices[0].message.content));
+                return apply ? applyAIResponse(payload) : payload;
             }
         }
 
