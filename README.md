@@ -56,6 +56,18 @@ VIKI executes browser speech-recognition transcripts immediately, so voice captu
 
 New items do not require a location or quantity. Quantity defaults to one, while location, category, and shelf life are inferred from exact food rules, configurable tags, built-in food-storage heuristics, and finally the configured unknown-item location.
 
+Add several assets in one message by separating them with commas, for example `add milk, 2 cartons yogurt, bread to cupboard`. VIKI creates an ordered review queue and asks for confirmation one asset at a time. Reply `yes` to add the current entry and continue, or `cancel` to stop before the current and remaining entries are added. Unfamiliar entries receive their powered shelf-life review when their turn is reached.
+
+When a new item does not match any preset, tag, or heuristic, VIKI asks the configured AI for a likely storage location, category, and shelf life before adding it. The review always displays what the non-AI fallback would have selected. Reply `AI` (or `CONFIRM`), `DEFAULT`, a custom number of days, or `CANCEL`. Local command errors are also passed to the configured AI for a corrective explanation or a validated, confirmable action; if the AI is unavailable, the original error and connection failure remain visible.
+
+VIKI remains the conversational identity when a request needs model-powered interpretation. During that processing the header and response label display `VIKI [POWERED]`, without presenting a separate assistant persona. Approximate commands can be resolved with a natural “Did you mean…?” question and confirmed by replying `yes`. Common variants such as `delete everything`, `remove all items`, `clear the whole inventory`, and `wipe all assets` request a full registry clear and always require confirmation before any data is removed.
+
+## Voice output and quick editing
+
+VIKI speaks assistant and powered responses with the browser Web Speech Synthesis API. The `VOICE ON` / `VOICE OFF` control beside the chat input immediately mutes playback and stops queued speech. Settings provide a persistent speech enable switch, installed system voice selection, rate, and volume. Available voices depend on the browser and operating system; unsupported browsers continue to display text normally.
+
+Long-press or long-click an asset quantity or degradation timer to enter a replacement value through the conversation. Keyboard users can focus either value and press Enter or Space. Quantity accepts zero or a positive decimal, while degradation timelines must be greater than zero.
+
 Open **Settings** in the application header to edit the AI configuration, tag matching priority, unknown-item fallback, data tools, and preset rules in this format:
 
 ```text
