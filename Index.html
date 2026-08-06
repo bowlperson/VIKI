@@ -310,6 +310,18 @@
             font-size: 0.8rem;
         }
 
+        .item-qty, .item-timer {
+            cursor: pointer;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .item-qty:hover, .item-timer:hover,
+        .item-qty:focus-visible, .item-timer:focus-visible {
+            outline: 1px dashed var(--accent-cyan);
+            outline-offset: 2px;
+        }
+
         .item-location {
             font-size: 0.65rem;
             padding: 2px 6px;
@@ -651,7 +663,7 @@
             border-bottom-color: var(--accent-cyan);
         }
 
-        .send-btn, .mic-btn {
+        .send-btn, .mic-btn, .mute-btn {
             background: transparent;
             border: 1px solid var(--accent-amber);
             color: var(--accent-amber);
@@ -662,7 +674,7 @@
             transition: all 0.2s;
         }
 
-        .send-btn:hover, .mic-btn:hover:not(:disabled) {
+        .send-btn:hover, .mic-btn:hover:not(:disabled), .mute-btn:hover {
             background: var(--accent-amber);
             color: #000;
         }
@@ -672,6 +684,18 @@
             color: var(--accent-cyan);
             min-width: 44px;
             padding: 6px 10px;
+        }
+
+        .mute-btn {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            min-width: 78px;
+            padding: 6px 10px;
+        }
+
+        .mute-btn[aria-pressed="true"] {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
         }
 
         .mic-btn.listening {
@@ -891,6 +915,7 @@
                     <span class="input-prompt">></span>
                     <input type="text" id="messageInput" placeholder="Enter command or query..." onkeypress="handleKeyPress(event)">
                     <button class="mic-btn" id="micButton" onclick="toggleVoiceInput()" aria-label="Start voice input" title="Start voice input">MIC</button>
+                    <button class="mute-btn" id="muteButton" type="button" onclick="toggleSpeechMute()" aria-label="Mute VIKI speech" aria-pressed="false" title="Mute or unmute VIKI speech">VOICE ON</button>
                     <button class="send-btn" onclick="sendMessage()">EXECUTE</button>
                 </div>
                 <div class="voice-status" id="voiceStatus">VOICE: STANDBY</div>
@@ -926,6 +951,26 @@
                         <input type="checkbox" id="useLocalAI">
                         <label class="toggle-label" for="useLocalAI">LOCAL_MODE [OLLAMA]</label>
                     </div>
+                </section>
+                <section class="settings-section">
+                    <div class="config-title">// VOICE SYNTHESIS</div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="speechEnabled" checked>
+                        <label class="toggle-label" for="speechEnabled">SPEAK VIKI RESPONSES</label>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="speechVoice">SYSTEM_VOICE</label>
+                        <select class="config-select" id="speechVoice"><option value="">BROWSER DEFAULT</option></select>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="speechRate">SPEECH_RATE</label>
+                        <input class="config-input" type="range" id="speechRate" min="0.6" max="1.5" step="0.1" value="1">
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="speechVolume">VOLUME</label>
+                        <input class="config-input" type="range" id="speechVolume" min="0" max="1" step="0.1" value="1">
+                    </div>
+                    <div class="config-help" id="speechSupportNote">Uses voices installed in this browser or operating system.</div>
                 </section>
                 <section class="settings-section rules-section">
                     <div class="config-title">// TAGS &amp; PRESET INFO</div>
@@ -983,6 +1028,7 @@
         const CATEGORIES_KEY = 'viki_categories';
         const FALLBACK_LOCATION_KEY = 'viki_fallback_location';
         const MATCHING_PRIORITY_KEY = 'viki_matching_priority';
+        const SPEECH_SETTINGS_KEY = 'viki_speech_settings';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -1018,6 +1064,8 @@
         let isListening = false;
         let currentVoiceState = 'standby';
         let poweredMode = false;
+        let speechMuted = false;
+        let availableSpeechVoices = [];
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -1040,6 +1088,7 @@
             renderInventory();
             checkExpiringItems();
             initializeVoiceInput();
+            initializeSpeechSynthesis();
             updateDeviceDateTime();
             renderBootMessages();
             setInterval(updateDeviceDateTime, 1000);
@@ -1555,6 +1604,68 @@
             renderInventory();
         }
 
+        function beginInventoryValueEdit(item, field) {
+            if (pendingQuestions) {
+                addMessage('Finish or cancel the current question before editing another asset.', 'assistant');
+                return;
+            }
+            const isQuantity = field === 'quantity';
+            const label = isQuantity ? 'quantity' : 'degradation timeline';
+            const currentValue = isQuantity ? item.quantity : item.shelfLife;
+            showPendingQuestions([{ type: 'number', placeholder: `NEW ${label.toUpperCase()}`, step: isQuantity ? 0.25 : 1 }], (answers) => {
+                const value = Number(answers[0]);
+                const valid = Number.isFinite(value) && (isQuantity ? value >= 0 : value > 0);
+                if (!valid) {
+                    addMessage(`I could not set ${item.name}'s ${label}. Enter ${isQuantity ? 'zero or a positive number' : 'a number greater than zero'}.`, 'error');
+                    return;
+                }
+                const items = getInventory();
+                const target = items.find(candidate => String(candidate.id) === String(item.id));
+                if (!target) {
+                    addMessage(`${item.name} is no longer in the registry.`, 'error');
+                    return;
+                }
+                const previous = isQuantity ? target.quantity : target.shelfLife;
+                target[field] = value;
+                target.lastModified = getDeviceNow().toISOString();
+                saveInventory(items);
+                addMessage(`Updated ${target.name} ${label} from ${previous} to ${value}${isQuantity ? ` ${target.unit || 'unit'}(s)` : ' days'}.`, 'assistant');
+            }, { summary: `${item.name.toUpperCase()} currently has ${currentValue}${isQuantity ? ` ${item.unit || 'unit'}(s)` : ' degradation days'}. Enter the new value or say CANCEL.` });
+        }
+
+        function attachLongPressEditor(element, item, field) {
+            let timer = null;
+            let startX = 0;
+            let startY = 0;
+            const cancel = () => {
+                if (timer) clearTimeout(timer);
+                timer = null;
+            };
+            element.tabIndex = 0;
+            element.title = `Long press to edit ${field === 'quantity' ? 'quantity' : 'degradation days'}`;
+            element.setAttribute('aria-label', `${element.textContent}. Long press or press Enter to edit.`);
+            element.addEventListener('pointerdown', event => {
+                startX = event.clientX;
+                startY = event.clientY;
+                cancel();
+                timer = setTimeout(() => {
+                    timer = null;
+                    beginInventoryValueEdit(item, field);
+                }, 650);
+            });
+            element.addEventListener('pointermove', event => {
+                if (Math.abs(event.clientX - startX) > 10 || Math.abs(event.clientY - startY) > 10) cancel();
+            });
+            ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => element.addEventListener(type, cancel));
+            element.addEventListener('click', event => event.stopPropagation());
+            element.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    beginInventoryValueEdit(item, field);
+                }
+            });
+        }
+
         function renderInventory() {
             const list = document.getElementById('inventoryList');
             let items = getVisibleInventoryItems();
@@ -1612,6 +1723,7 @@
                 const quantity = document.createElement('div');
                 quantity.className = 'item-qty';
                 quantity.textContent = `${item.quantity} ${item.unit || 'unit'}(s)`;
+                attachLongPressEditor(quantity, item, 'quantity');
 
                 itemHeader.append(identity, quantity);
 
@@ -1622,6 +1734,7 @@
                 const timer = document.createElement('div');
                 timer.classList.add('item-timer', timerClass);
                 timer.textContent = `${timerText} | DEGRADATION: ${item.shelfLife} days`;
+                attachLongPressEditor(timer, item, 'shelfLife');
 
                 inventoryItem.append(itemHeader, meta, timer);
                 list.appendChild(inventoryItem);
@@ -1630,10 +1743,99 @@
 
         // --- CHAT INTERFACE ---
 
+        function getSpeechSettings() {
+            try {
+                return { enabled: true, muted: false, voice: '', rate: 1, volume: 1, ...JSON.parse(localStorage.getItem(SPEECH_SETTINGS_KEY) || '{}') };
+            } catch (error) {
+                return { enabled: true, muted: false, voice: '', rate: 1, volume: 1 };
+            }
+        }
+
+        function saveSpeechSettings() {
+            const settings = {
+                enabled: document.getElementById('speechEnabled').checked,
+                muted: speechMuted,
+                voice: document.getElementById('speechVoice').value,
+                rate: Number(document.getElementById('speechRate').value),
+                volume: Number(document.getElementById('speechVolume').value)
+            };
+            localStorage.setItem(SPEECH_SETTINGS_KEY, JSON.stringify(settings));
+            if (!settings.enabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+            updateMuteButton();
+        }
+
+        function populateSpeechVoices() {
+            if (!('speechSynthesis' in window)) return;
+            availableSpeechVoices = window.speechSynthesis.getVoices();
+            const select = document.getElementById('speechVoice');
+            const selected = getSpeechSettings().voice;
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'BROWSER DEFAULT';
+            const options = availableSpeechVoices.map(voice => {
+                const option = document.createElement('option');
+                option.value = voice.name;
+                option.textContent = `${voice.name.toUpperCase()} [${voice.lang}]`;
+                return option;
+            });
+            select.replaceChildren(defaultOption, ...options);
+            select.value = availableSpeechVoices.some(voice => voice.name === selected) ? selected : '';
+        }
+
+        function updateMuteButton() {
+            const button = document.getElementById('muteButton');
+            const enabled = document.getElementById('speechEnabled').checked;
+            const muted = speechMuted || !enabled;
+            button.textContent = muted ? 'VOICE OFF' : 'VOICE ON';
+            button.setAttribute('aria-pressed', String(muted));
+            button.setAttribute('aria-label', muted ? 'Unmute VIKI speech' : 'Mute VIKI speech');
+        }
+
+        function toggleSpeechMute() {
+            speechMuted = !speechMuted;
+            if (speechMuted && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+            saveSpeechSettings();
+        }
+
+        function speakMessage(text) {
+            if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+            const settings = getSpeechSettings();
+            if (!settings.enabled || speechMuted) return;
+            const utterance = new SpeechSynthesisUtterance(String(text).replace(/[_*`#]/g, ' '));
+            utterance.rate = settings.rate;
+            utterance.volume = settings.volume;
+            utterance.pitch = 0.9;
+            utterance.voice = availableSpeechVoices.find(voice => voice.name === settings.voice) || null;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function initializeSpeechSynthesis() {
+            const settings = getSpeechSettings();
+            speechMuted = settings.muted;
+            document.getElementById('speechEnabled').checked = settings.enabled;
+            document.getElementById('speechRate').value = settings.rate;
+            document.getElementById('speechVolume').value = settings.volume;
+            if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+                document.getElementById('speechEnabled').disabled = true;
+                document.getElementById('speechVoice').disabled = true;
+                document.getElementById('muteButton').disabled = true;
+                document.getElementById('speechSupportNote').textContent = 'Speech synthesis is not supported by this browser.';
+                document.getElementById('muteButton').textContent = 'NO VOICE';
+                return;
+            }
+            populateSpeechVoices();
+            window.speechSynthesis.addEventListener('voiceschanged', populateSpeechVoices);
+            ['speechEnabled', 'speechVoice', 'speechRate', 'speechVolume'].forEach(id => {
+                document.getElementById(id).addEventListener('change', saveSpeechSettings);
+            });
+            updateMuteButton();
+        }
+
         function addMessage(text, type = 'assistant') {
             const chatArea = document.getElementById('chatArea');
             const msg = document.createElement('div');
-            msg.className = `message ${type === 'assistant' && poweredMode ? 'powered' : type}`;
+            const renderedType = type === 'assistant' && poweredMode ? 'powered' : type;
+            msg.className = `message ${renderedType}`;
 
             String(text).split('\n').forEach((line, idx) => {
                 if (idx > 0) msg.appendChild(document.createElement('br'));
@@ -1642,6 +1844,7 @@
 
             chatArea.appendChild(msg);
             chatArea.scrollTop = chatArea.scrollHeight;
+            if (renderedType === 'assistant' || renderedType === 'powered' || renderedType === 'error') speakMessage(text);
         }
 
         function showTyping(show) {
@@ -1767,7 +1970,7 @@
             const choices = questions.map((question, index) => question.type === 'select'
                 ? `Choice ${index + 1}: ${question.options.map(option => option.label).join(' / ')}`
                 : `Value ${index + 1}: ${question.placeholder || 'number'}`).join('\n');
-            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply with the requested value, CONFIRM to accept VIKI's best match, or CANCEL.`, config.messageType || 'assistant');
+            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply YES or CONFIRM to accept VIKI's best match, provide the requested value, or reply CANCEL.`, config.messageType || 'assistant');
         }
 
         function showPendingQuestions(questions, callback, config = {}) {
@@ -1785,7 +1988,10 @@
             if (!pendingQuestions) return;
             const activePending = pendingQuestions;
             const answers = activePending.questions.map(q => {
-                if (q.type === 'number') return parseFloat(reply) || 1;
+                if (q.type === 'number') {
+                    const parsed = parseFloat(reply);
+                    return Number.isFinite(parsed) ? parsed : 1;
+                }
                 const normalizedReply = reply.toLowerCase();
                 const match = q.options.find(option => normalizedReply.includes(String(option.value).toLowerCase()) || normalizedReply.includes(option.label.toLowerCase()));
                 return (match || q.options[0]).value;
