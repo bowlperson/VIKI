@@ -2116,9 +2116,16 @@
             }
 
             if (mode === 'use') {
-                match = clean.match(new RegExp(`^(?:use|used|ate|consume|consumed)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+)?(?:of\\s+)?(?:the\\s+)?(.+?)(?:\\s+from\\s+${locations})?$`, 'i'));
+                match = clean.match(new RegExp(`^(use|used|ate|consume|consumed|remove|removed|toss|tossed|throw away|threw away)\\s+(?:(all)\\s+)?(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+)?(?:of\\s+)?(?:the\\s+)?(.+?)(?:\\s+from\\s+${locations})?$`, 'i'));
                 if (!match) return null;
-                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null };
+                return {
+                    verb: match[1].toLowerCase(),
+                    allRequested: Boolean(match[2]),
+                    quantity: parseCommandQuantity(match[3]),
+                    unit: normalizeUnit(match[4]),
+                    item: normalizeItemName(match[5]),
+                    location: match[6] || null
+                };
             }
 
             if (mode === 'move') {
@@ -2183,6 +2190,59 @@
             const value = (unit || 'unit').toLowerCase().trim();
             const aliases = { cans: 'can', bags: 'bag', boxes: 'box', cartons: 'carton', pounds: 'pound', lbs: 'pound', ounces: 'ounce', oz: 'ounce', grams: 'gram', g: 'gram', liters: 'liter', litres: 'liter', l: 'liter', bottles: 'bottle', jars: 'jar', packages: 'package', packs: 'pack' };
             return aliases[value] || value;
+        }
+
+        function getEditDistance(left, right) {
+            const a = left.toLowerCase();
+            const b = right.toLowerCase();
+            const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+            for (let i = 1; i <= a.length; i += 1) {
+                let diagonal = row[0];
+                row[0] = i;
+                for (let j = 1; j <= b.length; j += 1) {
+                    const previous = row[j];
+                    row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+                    diagonal = previous;
+                }
+            }
+            return row[b.length];
+        }
+
+        function findClosestInventoryName(name) {
+            const names = [...new Set(getInventory().map(item => item.name))];
+            const ranked = names.map(candidate => ({ candidate, distance: getEditDistance(name, candidate) }))
+                .sort((left, right) => left.distance - right.distance || left.candidate.localeCompare(right.candidate));
+            const closest = ranked[0];
+            const threshold = Math.max(1, Math.floor(Math.max(name.length, closest?.candidate.length || 0) / 3));
+            return closest && closest.distance <= threshold ? closest.candidate : null;
+        }
+
+        function requestRemovalSpellingCorrection(requestedName, retry) {
+            const suggestion = findClosestInventoryName(requestedName);
+            pendingQuestions = {
+                questions: [],
+                cancelMessage: 'Removal cancelled. The registry is unchanged.',
+                handleReply(reply) {
+                    const response = reply.trim();
+                    if (suggestion && /^(?:yes|confirm|correct)$/i.test(response)) {
+                        pendingQuestions = null;
+                        retry(suggestion);
+                        return;
+                    }
+                    const correctedName = normalizeItemName(response.replace(/^(?:it is|i meant|correct spelling is)\s+/i, ''));
+                    if (getMatchingItems(correctedName).length > 0) {
+                        pendingQuestions = null;
+                        retry(correctedName);
+                        return;
+                    }
+                    addMessage(`I still cannot find "${correctedName || requestedName}". Enter the item name exactly as shown in the registry, or CANCEL.`, 'assistant');
+                }
+            };
+            const prompt = suggestion
+                ? `I cannot find "${requestedName}". Did you mean "${suggestion}"? Reply YES or enter the correct item name.`
+                : `I cannot find "${requestedName}". Enter the item name exactly as shown in the registry, or CANCEL.`;
+            addMessage(prompt, 'assistant');
+            return { type: 'pending' };
         }
 
         function moveItem(name, destination, itemId = null) {
@@ -2269,34 +2329,43 @@
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.${inference} Current status: ${result.details.daysLeft} days until degradation.` };
             }
 
-            const useParsed = parseInventoryPhrase(text, 'use');
+            const wholeRegistryRemoval = /^(?:(?:please|can you|could you|would you)\s+)*(?:delete|remove|clear|discard|empty|wipe|get rid of)\s+(?:(?:out|away|all of)\s+)?(?:everything|all|the whole inventory|the entire inventory|all items|all assets)(?:\s+(?:from|in)\s+(?:the\s+)?(?:inventory|registry))?[.!?]*$/i.test(text.trim());
+            const useParsed = wholeRegistryRemoval ? null : parseInventoryPhrase(text, 'use');
             if (useParsed) {
-                const buildConsumeConfirmation = (quantity) => {
-                    const matches = getMatchingItems(useParsed.item, useParsed.location);
-                    if (matches.length === 0) return { message: `ERROR: ${useParsed.item} not found in registry.`, error: true };
+                const removalVerb = /^(?:remove|removed|toss|tossed|throw away|threw away)$/.test(useParsed.verb);
+                const buildConsumeConfirmation = (quantity, itemName = useParsed.item) => {
+                    const matches = getMatchingItems(itemName, useParsed.location);
+                    if (matches.length === 0) return requestRemovalSpellingCorrection(itemName, correctedName => {
+                        const response = buildConsumeConfirmation(quantity, correctedName);
+                        if (response && response.type !== 'pending') addMessage(response.message, response.error ? 'error' : 'assistant');
+                    });
                     const quantityMatches = matches.filter(item => item.quantity >= quantity);
-                    if (quantityMatches.length === 0) return { message: `ERROR: Insufficient quantity for ${useParsed.item}.`, error: true };
+                    if (quantityMatches.length === 0) return { message: `ERROR: Insufficient quantity for ${itemName}. Available: ${Math.max(...matches.map(item => item.quantity))}.`, error: true };
                     const deletesItem = quantityMatches.some(item => item.quantity === quantity);
                     const needsSelection = quantityMatches.length > 1;
-                    const uncertainParsing = !useParsed.unit && text.split(/\s+/).length <= 3;
-                    if (!deletesItem && !needsSelection && !uncertainParsing) {
-                        const result = useItem(useParsed.item, quantity, useParsed.location, quantityMatches[0].id);
-                        return { message: result.error || result.message, error: !!result.error };
-                    }
-                    const reasons = [];
+                    const reasons = ['unit removal requires confirmation'];
                     if (deletesItem) reasons.push('requested quantity will consume all remaining stock for at least one match');
                     if (needsSelection) reasons.push('multiple matching assets were found');
-                    if (uncertainParsing) reasons.push('command parsing is uncertain');
                     return withOperationConfirmation({
-                        summary: `Operation: consume ${quantity} ${useParsed.unit || 'unit'}(s) of ${useParsed.item}.\nReason: ${reasons.join('; ')}.`,
+                        summary: `Remove ${quantity} ${useParsed.unit || 'unit'}(s) of ${itemName}?\nRemaining after confirmation: ${quantityMatches[0].quantity - quantity}.\nReason: ${reasons.join('; ')}.`,
                         questions: needsSelection ? [buildItemSelectionQuestion(quantityMatches)] : [],
-                        confirmText: deletesItem ? 'CONFIRM DEPLETION' : 'CONFIRM CONSUME'
+                        confirmText: deletesItem ? 'CONFIRM DEPLETION' : 'CONFIRM UNIT REMOVAL'
                     }, (answers) => {
                         const itemId = needsSelection ? answers[0] : quantityMatches[0].id;
-                        const result = useItem(useParsed.item, quantity, useParsed.location, itemId);
+                        const result = useItem(itemName, quantity, useParsed.location, itemId);
                         addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
                     });
                 };
+
+                if (removalVerb && (useParsed.allRequested || !useParsed.quantity)) {
+                    const matches = getMatchingItems(useParsed.item, useParsed.location);
+                    if (matches.length === 0) return requestRemovalSpellingCorrection(useParsed.item, correctedName => {
+                        const correctedMatches = getMatchingItems(correctedName, useParsed.location);
+                        const response = buildConsumeConfirmation(correctedMatches[0].quantity, correctedName);
+                        if (response && response.type !== 'pending') addMessage(response.message, response.error ? 'error' : 'assistant');
+                    });
+                    return buildConsumeConfirmation(matches[0].quantity);
+                }
 
                 if (!useParsed.quantity) {
                     showPendingQuestions([{ type: 'number', placeholder: 'QUANTITY USED', step: 0.25 }], (answers) => {
@@ -2394,7 +2463,7 @@
                 });
             }
 
-            const removeMatch = lower.match(/(?:delete|remove|discard|throw away)\s+(?:the\s+)?(.+?)(?:\s+from\s+(fridge|freezer|cupboard))?$/i);
+            const removeMatch = lower.match(/(?:delete|discard)\s+(?:the\s+)?(.+?)(?:\s+from\s+(fridge|freezer|cupboard))?$/i);
             if (removeMatch) {
                 const item = normalizeItemName(removeMatch[1]);
                 const location = removeMatch[2] || null;
@@ -2533,6 +2602,11 @@
                 return `Modified ${target.name}. Original added date preserved unless explicitly changed.`;
             }
             if (action.type === 'remove_item') {
+                if (action.quantity !== undefined) {
+                    const result = useItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, itemId);
+                    if (result.error) throw new Error(result.error);
+                    return result.message;
+                }
                 const items = getInventory();
                 const remaining = itemId ? items.filter(item => String(item.id) !== String(itemId)) : items.filter(item => !(item.name.toLowerCase() === action.name.toLowerCase() && (!location || item.location === location)));
                 if (remaining.length === items.length) throw new Error(`ERROR: ${action.name} not found in registry.`);
