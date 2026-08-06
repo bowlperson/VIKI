@@ -799,7 +799,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.0.7 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.2.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1069,6 +1069,8 @@
         let poweredMode = false;
         let speechMuted = false;
         let availableSpeechVoices = [];
+        const aiConversation = [];
+        const AI_HISTORY_LIMIT = 10;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -2177,6 +2179,12 @@
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
 
+            // Device time is authoritative and does not require a network or AI call.
+            if (/^(?:what(?:'s| is) (?:the )?(?:date|time|day)|what(?:'s| is) today|today(?:'s)? date|current (?:date|time))\??$/i.test(text.trim())) {
+                const now = getDeviceNow();
+                return { message: `Operator, today is ${now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. Device time is ${now.toLocaleTimeString()}.` };
+            }
+
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
                 queueBatchAddConfirmations(batchAdds);
@@ -2472,7 +2480,7 @@
             if (!Array.isArray(payload.actions)) payload.actions = [];
             payload.actions.forEach((action, index) => {
                 if (!action || typeof action !== 'object') throw new Error(`Action ${index + 1} malformed.`);
-                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
+                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view', 'update_settings'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
                 if (['add_item', 'consume_item', 'modify_item', 'remove_item'].includes(action.type) && !action.name) throw new Error(`Action ${index + 1} missing name.`);
             });
             return payload;
@@ -2519,16 +2527,37 @@
                 setInventoryView(action.view || {});
                 return 'Display parameters updated from AI action.';
             }
+            if (action.type === 'update_settings') {
+                const settings = action.settings || {};
+                if (settings.fallbackLocation !== undefined) {
+                    if (!['fridge', 'freezer', 'cupboard'].includes(settings.fallbackLocation)) throw new Error('Unknown-item location rejected.');
+                    document.getElementById('fallbackLocation').value = settings.fallbackLocation;
+                    localStorage.setItem(FALLBACK_LOCATION_KEY, settings.fallbackLocation);
+                }
+                if (settings.matchingPriority !== undefined) {
+                    if (!['exact_first', 'tags_first'].includes(settings.matchingPriority)) throw new Error('Matching priority rejected.');
+                    document.getElementById('matchingPriority').value = settings.matchingPriority;
+                    localStorage.setItem(MATCHING_PRIORITY_KEY, settings.matchingPriority);
+                }
+                const speech = getSpeechSettings();
+                if (typeof settings.speechEnabled === 'boolean') speech.enabled = settings.speechEnabled;
+                if (settings.speechRate !== undefined) speech.rate = Math.min(1.5, Math.max(0.6, Number(settings.speechRate)));
+                if (settings.speechVolume !== undefined) speech.volume = Math.min(1, Math.max(0, Number(settings.speechVolume)));
+                localStorage.setItem(SPEECH_SETTINGS_KEY, JSON.stringify(speech));
+                initializeSpeechSynthesis();
+                return 'Application settings updated.';
+            }
             return 'No operation executed.';
         }
 
         function getActionConfirmationReasons(action) {
-            if (!['consume_item', 'modify_item', 'remove_item', 'clear_inventory'].includes(action.type)) return [];
+            if (!['consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'update_settings'].includes(action.type)) return [];
             const matches = action.name ? getMatchingItems(action.name, action.location || null) : [];
             const quantity = Number(action.quantity ?? 1);
             const reasons = ['AI registry mutations require explicit confirmation'];
             if (action.type === 'clear_inventory') reasons.push('operation would delete the entire registry');
             if (action.type === 'remove_item') reasons.push('operation would delete an item');
+            if (action.type === 'update_settings') reasons.push('operation would change application settings');
             if (action.type === 'consume_item' && matches.some(item => item.quantity === quantity)) reasons.push('operation would consume all remaining quantity');
             if (!action.location && matches.length > 1) reasons.push('operation matches multiple assets');
             if (!action.confidence || action.confidence < 0.8) reasons.push('parsing confidence is uncertain');
@@ -2647,11 +2676,16 @@
             if (!useLocal && !apiKey) throw new Error('API key required. Enter in configuration panel.');
 
             const inventory = getInventorySnapshot();
-            const sortingContext = `Household sorting rules JSON: ${JSON.stringify(getAssetDatabase())}. Unknown-item fallback: ${localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge'}. Infer missing quantity as 1 and infer location/category/shelf life from these rules or ordinary food-storage knowledge; do not ask for clarification when a reasonable choice exists.`;
+            const sortingContext = `Household sorting rules JSON: ${JSON.stringify(getAssetDatabase())}. Editable application settings JSON: ${JSON.stringify({ fallbackLocation: localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge', matchingPriority: localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first', ...getSpeechSettings() })}. Infer missing quantity as 1 and infer location/category/shelf life from these rules or ordinary food-storage knowledge; do not ask for clarification when a reasonable choice exists.`;
             const inventoryContext = `${inventory.length > 0 ? `Current registry JSON: ${JSON.stringify(inventory)}` : 'Registry empty.'}\n${sortingContext}`;
             const deviceContext = `Device date/time: ${getDeviceNow().toString()}. Device ISO timestamp: ${getDeviceNow().toISOString()}.`;
 
             const systemPrompt = VIKI_PERSONALITY.getSystemPrompt({ inventoryContext, deviceContext });
+            const messages = [
+                { role: 'system', content: systemPrompt },
+                ...aiConversation.slice(-AI_HISTORY_LIMIT),
+                { role: 'user', content: userMessage }
+            ];
 
             if (useLocal) {
                 const response = await fetch(OLLAMA_URL, {
@@ -2659,7 +2693,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: 'llama3.2:3b',
-                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+                        messages,
                         stream: false,
                         format: 'json'
                     })
@@ -2668,6 +2702,7 @@
                 if (!response.ok) throw new Error('Local AI connection failed');
                 const data = await response.json();
                 const payload = validateAIResponse(safeParseAIJson(data.message.content));
+                aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
 
             } else {
@@ -2676,9 +2711,14 @@
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                     body: JSON.stringify({
                         model: model,
-                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+                        messages,
                         max_tokens: 700,
-                        response_format: { type: 'json_object' }
+                        response_format: { type: 'json_object' },
+                        venice_parameters: {
+                            include_venice_system_prompt: false,
+                            enable_web_search: 'auto',
+                            enable_web_citations: true
+                        }
                     })
                 });
 
@@ -2689,6 +2729,7 @@
 
                 const data = await response.json();
                 const payload = validateAIResponse(safeParseAIJson(data.choices[0].message.content));
+                aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
             }
         }

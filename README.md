@@ -47,6 +47,11 @@ Supported actions are validated before being applied:
 - `modify_item`
 - `remove_item`
 - `set_view`
+- `update_settings`
+
+VIKI receives a persistent identity system prompt and recent conversation context on every model request. Venice requests automatically enable web search and citations when the model determines that current information is needed, allowing VIKI to answer forecast, headline, and other live-information questions. Local Ollama can answer from its own knowledge but does not gain a web-search backend from VIKI.
+
+VIKI can propose changes to registry content, filters, the unknown-item fallback, matching priority, and voice settings. Registry removals, consumption, modifications, and application-setting changes are staged for explicit Operator confirmation before they execute. Browser and operating-system security boundaries remain in force: this web application cannot edit the Windows registry, arbitrary system files, or settings outside its own browser storage.
 
 If an action is rejected, VIKI displays an error and does not silently mutate unrelated inventory data.
 
