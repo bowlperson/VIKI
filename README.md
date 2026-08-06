@@ -29,7 +29,7 @@ Sort options include expiration soonest, name, location, recently added, quantit
 
 ## AI configuration
 
-Enter a Venice API key in the configuration panel, or enable local Ollama mode. VIKI sends the current inventory snapshot and the browser device timestamp to the AI.
+Enter a Venice API key in **Settings**, then select **Save AI settings**, or enable local Ollama mode. No API key is included in the source or data exports. The key is stored only in the current browser's `localStorage`. VIKI sends the current inventory snapshot and browser device timestamp to the configured service.
 
 AI responses are required to be JSON objects with this shape:
 
@@ -53,6 +53,8 @@ If an action is rejected, VIKI displays an error and does not silently mutate un
 ## Conversation and sorting rules
 
 VIKI executes browser speech-recognition transcripts immediately, so voice capture does not require a separate confirmation control. Confirmations that are still appropriate for destructive or ambiguous operations happen in the conversation: reply with the requested value, `CONFIRM`, or `CANCEL`.
+
+To queue several additions, begin every comma-separated entry with `add`, for example: `add milk, add 2 bread, add eggs`. VIKI reviews the queued entries one at a time. Reply `YES` to add the current entry or `NO`/`CANCEL` to skip it and continue to the next.
 
 New items do not require a location or quantity. Quantity defaults to one, while location, category, and shelf life are inferred from exact food rules, configurable tags, built-in food-storage heuristics, and finally the configured unknown-item location.
 

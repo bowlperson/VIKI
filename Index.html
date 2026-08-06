@@ -938,6 +938,7 @@
                     <div class="config-row">
                         <label class="config-label" for="apiKey">API_KEY</label>
                         <input type="password" class="config-input" id="apiKey" placeholder="ENTER_KEY">
+                        <div class="config-help">No key is bundled with VIKI. Enter it here; it is stored only in this browser.</div>
                     </div>
                     <div class="config-row">
                         <label class="config-label" for="modelSelect">AI_MODEL</label>
@@ -950,6 +951,9 @@
                     <div class="toggle-row">
                         <input type="checkbox" id="useLocalAI">
                         <label class="toggle-label" for="useLocalAI">LOCAL_MODE [OLLAMA]</label>
+                    </div>
+                    <div class="config-actions">
+                        <button type="button" class="config-button" id="saveAISettingsButton">SAVE_AI_SETTINGS</button>
                     </div>
                 </section>
                 <section class="settings-section">
@@ -1021,7 +1025,6 @@
         // --- CONFIGURATION ---
         const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions';
         const OLLAMA_URL = 'http://localhost:11434/api/chat';
-        const DEFAULT_API_KEY = 'VENICE_INFERENCE_KEY_SC9fuUJsuDDmCfMzvNlb8jmMDbdjJvlgnou2H7bPUx';
 
         // --- DATA STORAGE ---
         const DB_KEY = 'viki_inventory_v2';
@@ -1069,7 +1072,7 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            const savedKey = localStorage.getItem('viki_api_key') || DEFAULT_API_KEY;
+            const savedKey = localStorage.getItem('viki_api_key') || '';
             document.getElementById('apiKey').value = savedKey;
 
             const savedModel = localStorage.getItem('viki_model');
@@ -1330,7 +1333,7 @@
         }
 
         function getApiKey() {
-            return document.getElementById('apiKey').value || DEFAULT_API_KEY;
+            return document.getElementById('apiKey').value.trim();
         }
 
         function updateStatus() {
@@ -1966,11 +1969,11 @@
 
         function showConfirmationPanel(config, callback) {
             const questions = config.questions || [];
-            pendingQuestions = { questions, callback, cancelMessage: config.cancelMessage || 'Operation cancelled.' };
+            pendingQuestions = { questions, callback, onCancel: config.onCancel, cancelMessage: config.cancelMessage || 'Operation cancelled.' };
             const choices = questions.map((question, index) => question.type === 'select'
                 ? `Choice ${index + 1}: ${question.options.map(option => option.label).join(' / ')}`
                 : `Value ${index + 1}: ${question.placeholder || 'number'}`).join('\n');
-            addMessage(`${config.title || 'CONFIRMATION REQUIRED:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply YES or CONFIRM to accept VIKI's best match, provide the requested value, or reply CANCEL.`, config.messageType || 'assistant');
+            addMessage(`${config.title || 'CONFIRM:'}\n${config.summary || ''}${choices ? `\n${choices}` : ''}\nReply YES, a value, or CANCEL.`, config.messageType || 'assistant');
         }
 
         function showPendingQuestions(questions, callback, config = {}) {
@@ -2002,9 +2005,10 @@
 
         function cancelPendingQuestions() {
             if (!pendingQuestions) return;
-            const message = pendingQuestions.cancelMessage;
+            const activePending = pendingQuestions;
             pendingQuestions = null;
-            addMessage(message, 'system');
+            addMessage(activePending.cancelMessage, 'system');
+            if (activePending.onCancel) activePending.onCancel();
         }
 
         function getMatchingItems(name, location = null) {
@@ -2123,6 +2127,35 @@
             return null;
         }
 
+        function parseBatchAddCommands(text) {
+            const parts = text.split(',').map(part => part.trim()).filter(Boolean);
+            if (parts.length < 2 || !parts.every(part => /^add\s+/i.test(part))) return null;
+            const parsed = parts.map(part => parseInventoryPhrase(part, 'add'));
+            return parsed.every(Boolean) ? parsed : null;
+        }
+
+        function queueBatchAddConfirmations(entries, index = 0) {
+            if (index >= entries.length) {
+                addMessage('Batch complete. All approved assets are registered.', 'assistant');
+                return;
+            }
+            const parsed = entries[index];
+            const info = getAssetInfo(parsed.item);
+            const location = parsed.location || info.location || 'fridge';
+            const quantity = parsed.quantity || 1;
+            const shelfLife = Number(info.days) || 14;
+            showConfirmationPanel({
+                title: `BATCH ${index + 1}/${entries.length}:`,
+                summary: `Add ${quantity} ${parsed.unit || 'unit'}(s) of ${parsed.item} to ${location}; ${shelfLife}-day timeline?`,
+                cancelMessage: `${parsed.item} skipped.`,
+                onCancel: () => queueBatchAddConfirmations(entries, index + 1)
+            }, () => {
+                const result = addItem(parsed.item, quantity, location, shelfLife, info.category, parsed.unit, parsed.note);
+                addMessage(result.message, 'assistant');
+                queueBatchAddConfirmations(entries, index + 1);
+            });
+        }
+
         function normalizeUnit(unit) {
             const value = (unit || 'unit').toLowerCase().trim();
             const aliases = { cans: 'can', bags: 'bag', boxes: 'box', cartons: 'carton', pounds: 'pound', lbs: 'pound', ounces: 'ounce', oz: 'ounce', grams: 'gram', g: 'gram', liters: 'liter', litres: 'liter', l: 'liter', bottles: 'bottle', jars: 'jar', packages: 'package', packs: 'pack' };
@@ -2143,6 +2176,12 @@
 
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
+
+            const batchAdds = parseBatchAddCommands(text);
+            if (batchAdds) {
+                queueBatchAddConfirmations(batchAdds);
+                return { type: 'pending' };
+            }
 
             // Inventory view controls
             const locationCommand = lower.match(/(?:show|display|filter)(?: only)?\s+(fridge|freezer|cupboard)(?:\s+(?:items|assets))?/i);
@@ -2682,9 +2721,14 @@
             filterCollapseButton.setAttribute('aria-expanded', String(!expanded));
             filterContent.hidden = expanded;
         });
-        document.getElementById('apiKey').addEventListener('change', (e) => localStorage.setItem('viki_api_key', e.target.value));
-        document.getElementById('modelSelect').addEventListener('change', (e) => localStorage.setItem('viki_model', e.target.value));
-        document.getElementById('useLocalAI').addEventListener('change', (e) => { localStorage.setItem('viki_local', e.target.checked); updateStatus(); });
+        document.getElementById('saveAISettingsButton').addEventListener('click', () => {
+            localStorage.setItem('viki_api_key', getApiKey());
+            localStorage.setItem('viki_model', document.getElementById('modelSelect').value);
+            localStorage.setItem('viki_local', String(document.getElementById('useLocalAI').checked));
+            updateStatus();
+            addMessage('AI settings saved in this browser.', 'system');
+        });
+        document.getElementById('useLocalAI').addEventListener('change', updateStatus);
         document.getElementById('matchingPriority').addEventListener('change', (e) => localStorage.setItem(MATCHING_PRIORITY_KEY, e.target.value));
         document.getElementById('fallbackLocation').addEventListener('change', (e) => localStorage.setItem(FALLBACK_LOCATION_KEY, e.target.value));
         document.getElementById('exportDataButton').addEventListener('click', exportData);
