@@ -59,7 +59,7 @@ If an action is rejected, VIKI displays an error and does not silently mutate un
 
 VIKI executes browser speech-recognition transcripts immediately, so voice capture does not require a separate confirmation control. Confirmations that are still appropriate for destructive or ambiguous operations happen in the conversation: reply with the requested value, `CONFIRM`, or `CANCEL`.
 
-To queue several additions, begin every comma-separated entry with `add`, for example: `add milk, add 2 bread, add eggs`. VIKI reviews the queued entries one at a time. Reply `YES` to add the current entry or `NO`/`CANCEL` to skip it and continue to the next.
+To queue several additions, use one natural list, for example: `add milk, 2 bread, and eggs`. VIKI recognizes the commas and conjunction, recalls every item on its own line, and waits without changing the registry. Reply `CONFIRM` to add the entire list, `CANCEL` to add nothing, or send a complete revised comma-separated list to adjust names or quantities. VIKI repeats a revised list for confirmation and, after adding, repeats only the final item list.
 
 New items do not require a location or quantity. Quantity defaults to one, while location, category, and shelf life are inferred from exact food rules, configurable tags, built-in food-storage heuristics, and finally the configured unknown-item location.
 

@@ -799,7 +799,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.2.0 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.2.1 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -2050,6 +2050,7 @@
                 input.value = '';
                 addMessage(text, 'user');
                 if (/^(?:cancel|no|stop|never mind)$/i.test(text)) cancelPendingQuestions();
+                else if (pendingQuestions.handleReply) pendingQuestions.handleReply(text);
                 else submitPendingQuestions(text);
                 return;
             }
@@ -2068,7 +2069,7 @@
                     try {
                         const response = await callAI(`The request "${text}" did not match a local command because: "${localResponse.message}". Continue naturally as VIKI. If there is a likely intended command, ask "Did you mean ...?" and return the corresponding action so a simple yes can confirm it. Do not expose internal routing or mention AI assistance.`);
                         showTyping(false);
-                        addMessage(response, 'powered');
+                        if (response) addMessage(response, 'powered');
                     } catch (error) {
                         showTyping(false);
                         addMessage(`${localResponse.message}\nI could not extend interpretation: ${error.message}`, 'error');
@@ -2083,7 +2084,7 @@
             try {
                 const response = await callAI(text);
                 showTyping(false);
-                addMessage(response, 'powered');
+                if (response) addMessage(response, 'powered');
             } catch (error) {
                 showTyping(false);
                 addMessage(`Connection failed: ${error.message}`, 'error');
@@ -2130,32 +2131,52 @@
         }
 
         function parseBatchAddCommands(text) {
-            const parts = text.split(',').map(part => part.trim()).filter(Boolean);
-            if (parts.length < 2 || !parts.every(part => /^add\s+/i.test(part))) return null;
-            const parsed = parts.map(part => parseInventoryPhrase(part, 'add'));
+            const command = text.trim().replace(/[.!?]+$/, '');
+            if (!/^(?:add|added|bought|got|purchased)\s+/i.test(command)) return null;
+            const sharedVerb = command.match(/^(add|added|bought|got|purchased)\b/i)[1];
+            const remainder = command.replace(/^(?:add|added|bought|got|purchased)\s+/i, '');
+            const parts = remainder.split(/\s*,\s*|\s+and\s+(?=(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|dozen|half|quarter)?\s*[a-z])/i)
+                .map(part => part.replace(/^(?:and\s+)?(?:add(?:ed)?|bought|got|purchased)?\s*/i, '').trim())
+                .filter(Boolean);
+            if (parts.length < 2) return null;
+            const parsed = parts.map(part => parseInventoryPhrase(`${sharedVerb} ${part}`, 'add'));
             return parsed.every(Boolean) ? parsed : null;
         }
 
-        function queueBatchAddConfirmations(entries, index = 0) {
-            if (index >= entries.length) {
-                addMessage('Batch complete. All approved assets are registered.', 'assistant');
-                return;
-            }
-            const parsed = entries[index];
-            const info = getAssetInfo(parsed.item);
-            const location = parsed.location || info.location || 'fridge';
-            const quantity = parsed.quantity || 1;
-            const shelfLife = Number(info.days) || 14;
-            showConfirmationPanel({
-                title: `BATCH ${index + 1}/${entries.length}:`,
-                summary: `Add ${quantity} ${parsed.unit || 'unit'}(s) of ${parsed.item} to ${location}; ${shelfLife}-day timeline?`,
-                cancelMessage: `${parsed.item} skipped.`,
-                onCancel: () => queueBatchAddConfirmations(entries, index + 1)
-            }, () => {
-                const result = addItem(parsed.item, quantity, location, shelfLife, info.category, parsed.unit, parsed.note);
-                addMessage(result.message, 'assistant');
-                queueBatchAddConfirmations(entries, index + 1);
-            });
+        function formatBatchList(entries) {
+            return entries.map(entry => `${entry.quantity || 1} ${entry.unit || 'unit'}(s) ${entry.item}`).join('\n');
+        }
+
+        function parseBatchRevision(text) {
+            const prefixed = /^(?:add|added|bought|got|purchased)\s+/i.test(text.trim()) ? text.trim() : `add ${text.trim()}`;
+            return parseBatchAddCommands(prefixed);
+        }
+
+        function showBatchAddConfirmation(entries) {
+            pendingQuestions = {
+                questions: [],
+                cancelMessage: 'List cancelled. No assets were added.',
+                handleReply(reply) {
+                    if (/^(?:yes|confirm|confirmed|correct|proceed|add them)$/i.test(reply.trim())) {
+                        pendingQuestions = null;
+                        entries.forEach(entry => {
+                            const info = getAssetInfo(entry.item);
+                            addItem(entry.item, entry.quantity || 1, entry.location || info.location || 'fridge', Number(info.days) || 14, info.category, entry.unit, entry.note);
+                        });
+                        renderInventory();
+                        addMessage(formatBatchList(entries), 'assistant');
+                        return;
+                    }
+
+                    const revision = parseBatchRevision(reply);
+                    if (revision) {
+                        showBatchAddConfirmation(revision);
+                        return;
+                    }
+                    addMessage(`I could not read that adjustment. Send the complete revised list separated by commas.\n\n${formatBatchList(entries)}`, 'assistant');
+                }
+            };
+            addMessage(`${formatBatchList(entries)}\n\nConfirm or send the complete revised list.`, 'assistant');
         }
 
         function normalizeUnit(unit) {
@@ -2187,7 +2208,7 @@
 
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
-                queueBatchAddConfirmations(batchAdds);
+                showBatchAddConfirmation(batchAdds);
                 return { type: 'pending' };
             }
 
@@ -2565,6 +2586,17 @@
         }
 
         function applyAIResponse(payload) {
+            const addActions = payload.actions.filter(action => action.type === 'add_item');
+            if (addActions.length > 1 && addActions.length === payload.actions.length) {
+                showBatchAddConfirmation(addActions.map(action => ({
+                    item: normalizeItemName(action.name),
+                    quantity: Number(action.quantity) > 0 ? Number(action.quantity) : 1,
+                    unit: normalizeUnit(action.unit),
+                    location: action.location || null,
+                    note: action.note || ''
+                })));
+                return '';
+            }
             const riskyActions = payload.actions.map((action, actionIndex) => ({ action, actionIndex, reasons: getActionConfirmationReasons(action) })).filter(entry => entry.reasons.length > 0);
             if (riskyActions.length > 0) {
                 const questions = [];
