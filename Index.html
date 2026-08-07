@@ -809,7 +809,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.3.0 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.3.1 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1465,7 +1465,7 @@
             checkExpiringItems();
         }
 
-        function addItem(name, quantity = 1, location = null, customShelfLife = null, category = null, unit = 'unit', note = '') {
+        function addItem(name, quantity = 1, location = null, customShelfLife = null, category = null, unit = 'unit', note = '', addedDate = null) {
             const items = getInventory();
             const normalizedName = normalizeItemName(name);
             const assetInfo = getAssetInfo(normalizedName);
@@ -1474,7 +1474,12 @@
             const finalShelfLife = customShelfLife || assetInfo.days || 14;
             const finalCategory = category || assetInfo.category || 'general';
 
-            const existing = items.find(i => i.name.toLowerCase() === normalizedName && i.location === finalLocation);
+            const receivedAt = addedDate ? new Date(addedDate) : getDeviceNow();
+            if (Number.isNaN(receivedAt.getTime()) || receivedAt > getDeviceNow()) throw new Error('Added date must be a valid date that is not in the future.');
+            const receivedDay = receivedAt.toISOString().slice(0, 10);
+            const existing = items.find(i => i.name.toLowerCase() === normalizedName
+                && i.location === finalLocation
+                && new Date(i.addedDate).toISOString().slice(0, 10) === receivedDay);
 
             if (existing) {
                 existing.quantity += quantity;
@@ -1491,7 +1496,7 @@
                     note: note || '',
                     category: finalCategory,
                     location: finalLocation,
-                    addedDate: getDeviceNow().toISOString(),
+                    addedDate: receivedAt.toISOString(),
                     shelfLife: finalShelfLife,
                     lastUsed: null,
                     lastAdded: getDeviceNow().toISOString()
@@ -1501,7 +1506,7 @@
             saveInventory(items);
             return {
                 message: `Added ${quantity} ${unit || 'unit'}(s) of ${normalizedName} to ${finalLocation} registry.`,
-                details: { name: normalizedName, quantity, unit: unit || 'unit', note: note || '', location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, daysLeft: finalShelfLife }
+                details: { name: normalizedName, quantity, unit: unit || 'unit', note: note || '', location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, addedDate: receivedAt.toISOString(), daysLeft: Math.ceil(((receivedAt.getTime() + finalShelfLife * MS_PER_DAY) - getDeviceNow()) / MS_PER_DAY) }
             };
         }
 
@@ -2249,17 +2254,32 @@
             return Number.isFinite(parsed) ? parsed : null;
         }
 
+        function extractAddedDatePhrase(text) {
+            const relativePattern = /\s+(?:from\s+)?(today|yesterday|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?\s+ago)(?=\s+(?:to|in)\s+(?:the\s+)?(?:fridge|freezer|cupboard)\b|\s+(?:with|note|notes?)\b|[.!?]*$)/i;
+            const match = text.match(relativePattern);
+            if (!match) return { text, addedDate: null };
+            const phrase = match[1].toLowerCase();
+            let daysAgo = 0;
+            if (phrase === 'yesterday') daysAgo = 1;
+            else if (phrase !== 'today') daysAgo = parseCommandQuantity(phrase.match(/^(\d+|\w+)/)[1]);
+            if (!Number.isFinite(daysAgo) || daysAgo < 0) return { text, addedDate: null };
+            const added = getDeviceNow();
+            added.setDate(added.getDate() - daysAgo);
+            return { text: `${text.slice(0, match.index)}${text.slice(match.index + match[0].length)}`.replace(/\s+/g, ' ').trim(), addedDate: added.toISOString() };
+        }
+
         function parseInventoryPhrase(text, mode) {
             const locations = '(fridge|freezer|cupboard)';
             const quantityPattern = '(\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|dozen|half|quarter)';
             const unitPattern = '(cans?|bags?|boxes?|cartons?|pounds?|lbs?|ounces?|oz|grams?|g|liters?|litres?|l|bottles?|jars?|packages?|packs?)';
-            const clean = text.toLowerCase().replace(/\s+/g, ' ').trim();
+            const datedInput = mode === 'add' ? extractAddedDatePhrase(text) : { text, addedDate: null };
+            const clean = datedInput.text.toLowerCase().replace(/\s+/g, ' ').trim();
             let match;
 
             if (mode === 'add') {
-                match = clean.match(new RegExp(`^(?:add|added|bought|got|purchased)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+(?:of\\s+)?)?(.+?)(?:\\s+to\\s+${locations})?(?:\\s+(?:with|note|notes?)\\s+(.+))?$`, 'i'));
+                match = clean.match(new RegExp(`^(?:add|added|bought|got|purchased|received|stored)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+(?:of\\s+)?)?(.+?)(?:\\s+to\\s+${locations})?(?:\\s+(?:with|note|notes?)\\s+(.+))?$`, 'i'));
                 if (!match) return null;
-                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null, note: (match[5] || '').trim() };
+                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null, note: (match[5] || '').trim(), addedDate: datedInput.addedDate };
             }
 
             if (mode === 'use') {
@@ -2286,11 +2306,11 @@
 
         function parseBatchAddCommands(text) {
             const command = text.trim().replace(/[.!?]+$/, '');
-            if (!/^(?:add|added|bought|got|purchased)\s+/i.test(command)) return null;
-            const sharedVerb = command.match(/^(add|added|bought|got|purchased)\b/i)[1];
-            const remainder = command.replace(/^(?:add|added|bought|got|purchased)\s+/i, '');
+            if (!/^(?:add|added|bought|got|purchased|received|stored)\s+/i.test(command)) return null;
+            const sharedVerb = command.match(/^(add|added|bought|got|purchased|received|stored)\b/i)[1];
+            const remainder = command.replace(/^(?:add|added|bought|got|purchased|received|stored)\s+/i, '');
             const parts = remainder.split(/\s*,\s*|\s+and\s+(?=(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|dozen|half|quarter)?\s*[a-z])/i)
-                .map(part => part.replace(/^(?:and\s+)?(?:add(?:ed)?|bought|got|purchased)?\s*/i, '').trim())
+                .map(part => part.replace(/^(?:and\s+)?(?:add(?:ed)?|bought|got|purchased|received|stored)?\s*/i, '').trim())
                 .filter(Boolean);
             if (parts.length < 2) return null;
             const parsed = parts.map(part => parseInventoryPhrase(`${sharedVerb} ${part}`, 'add'));
@@ -2302,7 +2322,7 @@
         }
 
         function parseBatchRevision(text) {
-            const prefixed = /^(?:add|added|bought|got|purchased)\s+/i.test(text.trim()) ? text.trim() : `add ${text.trim()}`;
+            const prefixed = /^(?:add|added|bought|got|purchased|received|stored)\s+/i.test(text.trim()) ? text.trim() : `add ${text.trim()}`;
             return parseBatchAddCommands(prefixed);
         }
 
@@ -2315,7 +2335,7 @@
                         pendingQuestions = null;
                         entries.forEach(entry => {
                             const info = getAssetInfo(entry.item);
-                            addItem(entry.item, entry.quantity || 1, entry.location || info.location || 'fridge', Number(info.days) || 14, info.category, entry.unit, entry.note);
+                            addItem(entry.item, entry.quantity || 1, entry.location || info.location || 'fridge', Number(info.days) || 14, info.category, entry.unit, entry.note, entry.addedDate);
                         });
                         renderInventory();
                         addMessage(formatBatchList(entries), 'assistant');
@@ -2471,7 +2491,7 @@
                     await recommendUnknownItem(addParsed, assetInfo);
                     return { type: 'pending' };
                 }
-                const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note);
+                const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note, addParsed.addedDate);
                 const inference = !addParsed.location ? ' VIKI selected this location using saved sorting rules and preset food logic.' : '';
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.${inference} Current status: ${result.details.daysLeft} days until degradation.` };
             }
@@ -2728,7 +2748,7 @@
             const location = action.location || null;
             const itemId = action.itemId || null;
             if (action.type === 'add_item') {
-                return addItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, action.shelfLife ? Number(action.shelfLife) : null, action.category || null).message;
+                return addItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, action.shelfLife ? Number(action.shelfLife) : null, action.category || null, action.unit, action.note, action.addedDate).message;
             }
             if (action.type === 'consume_item') {
                 const result = useItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, itemId);
@@ -2814,7 +2834,8 @@
                     quantity: Number(action.quantity) > 0 ? Number(action.quantity) : 1,
                     unit: normalizeUnit(action.unit),
                     location: action.location || null,
-                    note: action.note || ''
+                    note: action.note || '',
+                    addedDate: action.addedDate || null
                 })));
                 return '';
             }
@@ -2906,7 +2927,7 @@
                 const customDays = Number.parseFloat(rawReply);
                 const selected = answers[0] === 'default' ? defaultChoice : aiChoice;
                 const shelfLife = Number.isFinite(customDays) && customDays > 0 ? customDays : selected.shelfLife;
-                const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note);
+                const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note, parsed.addedDate);
                 const source = Number.isFinite(customDays) && customDays > 0 ? 'Operator override' : (answers[0] === 'default' ? 'Standard default' : 'Powered assessment');
                 addMessage(`${result.message} ${source}: ${shelfLife} day degradation timeline. Standard fallback was ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()}. You can change this later by specifying a new expiration timeline.`, 'assistant');
             });
