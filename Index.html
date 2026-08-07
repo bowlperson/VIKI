@@ -797,7 +797,7 @@
         body.registry-edit-mode .registry-edit-action { display: inline-flex; }
         body.registry-edit-mode .inventory-list { max-height: none; }
         .registry-field { background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); color: var(--text-primary); padding: 5px; min-width: 0; }
-        .registry-editor { display: grid; grid-template-columns: 2fr repeat(5, minmax(90px, 1fr)); gap: 8px; width: 100%; }
+        .registry-editor { display: grid; grid-template-columns: 2fr repeat(6, minmax(110px, 1fr)); gap: 8px; width: 100%; }
 
     </style>
 </head>
@@ -809,7 +809,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.4.0 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.5.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1126,7 +1126,14 @@
             updateDeviceDateTime();
             renderBootMessages();
             setInterval(updateDeviceDateTime, 1000);
+            setInterval(refreshDegradationState, 60 * 1000);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDegradationState(); });
         });
+
+        function refreshDegradationState() {
+            if (!registryEditMode) renderInventory();
+            checkExpiringItems();
+        }
 
         function getModelSettingsForExport() {
             return {
@@ -1813,7 +1820,8 @@
                     editor.className = 'registry-editor';
                     const fields = [
                         ['name', 'text', item.name], ['quantity', 'number', item.quantity], ['unit', 'text', item.unit || 'unit'],
-                        ['category', 'text', item.category], ['location', 'text', item.location], ['shelfLife', 'number', item.shelfLife]
+                        ['category', 'text', item.category], ['location', 'text', item.location], ['shelfLife', 'number', item.shelfLife],
+                        ['addedDate', 'datetime-local', formatDateTimeLocal(item.addedDate)]
                     ];
                     fields.forEach(([field, type, value]) => {
                         const input = document.createElement('input');
@@ -1876,6 +1884,12 @@
             renderInventory();
         }
 
+        function formatDateTimeLocal(value) {
+            const date = new Date(value);
+            const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+            return local.toISOString().slice(0, 16);
+        }
+
         function saveManualRegistry() {
             const items = getInventory();
             const editors = [...document.querySelectorAll('#inventoryList .inventory-item[data-item-id]')];
@@ -1887,11 +1901,12 @@
                 const quantity = Number(value('quantity'));
                 const shelfLife = Number(value('shelfLife'));
                 const location = value('location').toLowerCase();
-                if (!name || !Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(shelfLife) || shelfLife <= 0 || !['fridge', 'freezer', 'cupboard'].includes(location)) {
-                    addMessage(`Manual registry save rejected for ${target.name}. Check name, quantity, location, and shelf life.`, 'error');
+                const addedDate = new Date(value('addedDate'));
+                if (!name || !Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(shelfLife) || shelfLife <= 0 || !['fridge', 'freezer', 'cupboard'].includes(location) || Number.isNaN(addedDate.getTime()) || addedDate > getDeviceNow()) {
+                    addMessage(`Manual registry save rejected for ${target.name}. Check name, quantity, location, shelf life, and stored date. Future dates are not allowed.`, 'error');
                     return;
                 }
-                Object.assign(target, { name, quantity, unit: value('unit') || 'unit', category: normalizeItemName(value('category')) || 'general', location, shelfLife, lastModified: getDeviceNow().toISOString() });
+                Object.assign(target, { name, quantity, unit: value('unit') || 'unit', category: normalizeItemName(value('category')) || 'general', location, shelfLife, addedDate: addedDate.toISOString(), lastModified: getDeviceNow().toISOString() });
             }
             saveInventory(items.filter(item => item.quantity > 0));
             setRegistryEditMode(false);
@@ -2189,6 +2204,23 @@
                 confirmText: config.confirmText || 'APPLY OPERATION',
                 cancelMessage: config.cancelMessage || 'Operation cancelled before registry changes.'
             }, (answers) => operation(answers));
+            return { type: 'pending' };
+        }
+
+        function showFinalConfirmation(summary, onConfirm, cancelMessage = 'Operation cancelled. No changes were made.') {
+            pendingQuestions = {
+                questions: [],
+                cancelMessage,
+                handleReply(reply) {
+                    if (/^(?:yes|confirm|confirmed|correct|proceed)$/i.test(reply.trim())) {
+                        pendingQuestions = null;
+                        onConfirm();
+                        return;
+                    }
+                    addMessage(`${summary}\n\nReply CONFIRM or CANCEL.`, 'assistant');
+                }
+            };
+            addMessage(`${summary}\n\nIs this correct? Reply CONFIRM or CANCEL.`, 'assistant');
             return { type: 'pending' };
         }
 
@@ -2703,16 +2735,52 @@
                 const itemName = normalizeItemName(analyzeMatch[1]);
                 const items = getInventory().filter(i => i.name.toLowerCase() === itemName);
                 if (items.length === 0) return { message: `ERROR: ${itemName} not found in registry.` };
-
-                const details = items.map(i => {
-                    const expiring = getExpiringItems().find(e => e.id === i.id);
-                    return `${i.name.toUpperCase()}:\n• Location: ${i.location.toUpperCase()}\n• Quantity: ${i.quantity} ${i.unit || 'unit'}(s)\n• Category: ${i.category.toUpperCase()}\n• Degradation timeline: ${i.shelfLife} days\n• Time until degradation: ${expiring.daysLeft} days\n• Added: ${new Date(i.addedDate).toLocaleDateString()}`;
-                }).join('\n\n');
-
-                return { message: `ASSET ANALYSIS:\n\n${details}` };
+                if (items.length > 1) {
+                    showPendingQuestions([buildItemSelectionQuestion(items)], answers => {
+                        const selected = items.find(item => String(item.id) === String(answers[0]));
+                        performPoweredAnalysis(selected).then(response => {
+                            if (response?.message) addMessage(response.message, response.error ? 'error' : 'powered');
+                        });
+                    }, { title: 'SELECT ASSET BATCH TO ANALYZE:', summary: `${itemName} has multiple received dates.` });
+                    return { type: 'pending' };
+                }
+                return await performPoweredAnalysis(items[0]);
             }
 
             return null;
+        }
+
+        async function performPoweredAnalysis(item) {
+            const current = getExpiringItems().find(candidate => String(candidate.id) === String(item.id));
+            const localDetails = `${item.name.toUpperCase()}: ${item.shelfLife}-day timeline, ${current.daysLeft} day(s) remaining, stored ${new Date(item.addedDate).toLocaleString()} in ${item.location}.`;
+            try {
+                const payload = await callAI(`WEB-SUPPORTED ASSET ANALYSIS: Review the likely safe degradation or shelf-life timeline for "${item.name}" stored in ${item.location}. Current registry timeline is ${item.shelfLife} days. The item was added on ${item.addedDate}. Use current web results when available and summarize the basis concisely. If ${item.shelfLife} days is likely wrong, return exactly one modify_item action with name "${item.name}" and only shelfLife set to the corrected total days. Never return or change addedDate, quantity, or location. If the timeline is reasonable, return no actions.` , { apply: false });
+                const correction = payload.actions.find(action => action.type === 'modify_item' && Number(action.shelfLife) > 0);
+                if (!correction || Number(correction.shelfLife) === Number(item.shelfLife)) return { message: `ANALYSIS COMPLETE:\n${localDetails}\n${payload.message}` };
+                const proposedShelfLife = Number(correction.shelfLife);
+                const projectedDaysLeft = Math.ceil(((new Date(item.addedDate).getTime() + proposedShelfLife * MS_PER_DAY) - getDeviceNow()) / MS_PER_DAY);
+                const originalAddedDate = item.addedDate;
+                const summary = [
+                    payload.message,
+                    `Current timeline: ${item.shelfLife} days (${current.daysLeft} remaining).`,
+                    `Proposed timeline: ${proposedShelfLife} days (${projectedDaysLeft} remaining).`,
+                    `Stored date remains ${new Date(originalAddedDate).toLocaleString()}.`
+                ].join('\n');
+                showFinalConfirmation(summary, () => {
+                    const inventory = getInventory();
+                    const target = inventory.find(candidate => String(candidate.id) === String(item.id));
+                    if (!target) { addMessage(`${item.name} is no longer in the registry.`, 'error'); return; }
+                    target.shelfLife = proposedShelfLife;
+                    target.addedDate = originalAddedDate;
+                    target.lastModified = getDeviceNow().toISOString();
+                    saveInventory(inventory);
+                    const updated = getExpiringItems().find(candidate => String(candidate.id) === String(item.id));
+                    addMessage(`${target.name}: ${target.shelfLife}-day timeline, ${updated.daysLeft} day(s) remaining. Stored date unchanged.`, 'assistant');
+                }, `Analysis correction cancelled. ${item.name} remains unchanged.`);
+                return { type: 'pending' };
+            } catch (error) {
+                return { message: `${localDetails}\nWeb-supported analysis unavailable: ${error.message}`, error: true };
+            }
         }
 
 
@@ -2848,6 +2916,27 @@
                 })));
                 return '';
             }
+            if (addActions.length === 1 && payload.actions.length === 1) {
+                const action = addActions[0];
+                const quantity = Number(action.quantity) > 0 ? Number(action.quantity) : 1;
+                const location = action.location || getAssetInfo(action.name).location || 'fridge';
+                const shelfLife = Number(action.shelfLife) > 0 ? Number(action.shelfLife) : Number(getAssetInfo(action.name).days) || 14;
+                const addedDate = action.addedDate ? new Date(action.addedDate) : getDeviceNow();
+                const summary = [
+                    `Add ${quantity} ${normalizeUnit(action.unit)}(s) of ${normalizeItemName(action.name)}.`,
+                    `Location: ${location.toUpperCase()}.`,
+                    `Stored: ${addedDate.toLocaleString()}.`,
+                    `Degradation timeline: ${shelfLife} days.`
+                ].join('\n');
+                showFinalConfirmation(summary, () => {
+                    try {
+                        addMessage(applyInventoryAction({ ...action, quantity, location, shelfLife, addedDate: addedDate.toISOString() }), 'assistant');
+                    } catch (error) {
+                        addMessage(error.message, 'error');
+                    }
+                }, `${action.name} was not added.`);
+                return '';
+            }
             const riskyActions = payload.actions.map((action, actionIndex) => ({ action, actionIndex, reasons: getActionConfirmationReasons(action) })).filter(entry => entry.reasons.length > 0);
             if (riskyActions.length > 0) {
                 const questions = [];
@@ -2916,30 +3005,44 @@
             }
 
             const aiChoice = recommendation || defaultChoice;
-            const summary = [
+            const selectionSummary = [
                 `Unfamiliar asset: ${parsed.item.toUpperCase()}. No saved preset or heuristic matched.`,
                 `Powered assessment: ${recommendation ? `${aiChoice.shelfLife} days in ${aiChoice.location.toUpperCase()} (${aiChoice.category}). ${aiMessage}` : aiMessage}`,
                 `Standard VIKI rules would default to ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()} (${defaultChoice.category}).`,
-                'Reply POWERED or CONFIRM to use my assessment, DEFAULT to use the standard fallback, or reply with a number of days to override the timeline.'
+                'Choose POWERED, DEFAULT, or enter a custom number of days. Reply CANCEL to stop.'
             ].join('\n');
-
-            showConfirmationPanel({
-                title: 'UNFAMILIAR ASSET REVIEW:',
-                summary,
-                messageType: 'powered',
-                questions: [{ type: 'select', options: [
-                    { value: 'ai', label: `POWERED (${aiChoice.shelfLife} DAYS)` },
-                    { value: 'default', label: `DEFAULT (${defaultChoice.shelfLife} DAYS)` }
-                ]}],
-                cancelMessage: `${parsed.item} was not added.`
-            }, (answers, rawReply) => {
-                const customDays = Number.parseFloat(rawReply);
-                const selected = answers[0] === 'default' ? defaultChoice : aiChoice;
-                const shelfLife = Number.isFinite(customDays) && customDays > 0 ? customDays : selected.shelfLife;
-                const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note, parsed.addedDate);
-                const source = Number.isFinite(customDays) && customDays > 0 ? 'Operator override' : (answers[0] === 'default' ? 'Standard default' : 'Powered assessment');
-                addMessage(`${result.message} ${source}: ${shelfLife} day degradation timeline. Standard fallback was ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()}. You can change this later by specifying a new expiration timeline.`, 'assistant');
-            });
+            pendingQuestions = {
+                questions: [],
+                cancelMessage: `${parsed.item} was not added.`,
+                handleReply(reply) {
+                    const normalized = reply.trim().toLowerCase();
+                    const customDays = Number.parseFloat(normalized);
+                    let selected;
+                    let shelfLife;
+                    let source;
+                    if (/^(?:powered|ai)$/i.test(normalized)) {
+                        selected = aiChoice; shelfLife = aiChoice.shelfLife; source = 'Powered assessment';
+                    } else if (/^default$/i.test(normalized)) {
+                        selected = defaultChoice; shelfLife = defaultChoice.shelfLife; source = 'Standard default';
+                    } else if (Number.isFinite(customDays) && customDays > 0) {
+                        selected = aiChoice; shelfLife = customDays; source = 'Operator override';
+                    } else {
+                        addMessage(`${selectionSummary}\n\nEnter POWERED, DEFAULT, a number of days, or CANCEL.`, 'powered');
+                        return;
+                    }
+                    pendingQuestions = null;
+                    const finalSummary = [
+                        `Add ${parsed.quantity || 1} ${parsed.unit || 'unit'}(s) of ${parsed.item}.`,
+                        `Location: ${selected.location.toUpperCase()}.`,
+                        `Degradation timeline: ${shelfLife} days (${source}).`
+                    ].join('\n');
+                    showFinalConfirmation(finalSummary, () => {
+                        const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note, parsed.addedDate);
+                        addMessage(result.message, 'assistant');
+                    }, `${parsed.item} was not added.`);
+                }
+            };
+            addMessage(`UNFAMILIAR ASSET REVIEW:\n${selectionSummary}`, 'powered');
         }
 
         async function callAI(userMessage, options = {}) {
