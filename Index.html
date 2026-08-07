@@ -796,8 +796,15 @@
         body.registry-edit-mode .main-content { display: none; }
         body.registry-edit-mode .registry-edit-action { display: inline-flex; }
         body.registry-edit-mode .inventory-list { max-height: none; }
-        .registry-field { background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); color: var(--text-primary); padding: 5px; min-width: 0; }
-        .registry-editor { display: grid; grid-template-columns: 2fr repeat(6, minmax(110px, 1fr)); gap: 8px; width: 100%; }
+        .registry-field { background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-color); color: var(--terminal-fg); padding: 6px; min-width: 0; width: 100%; font-family: inherit; }
+        .registry-editor { display: grid; gap: 8px; width: 100%; }
+        .registry-editor-header, .registry-editor-meta, .registry-editor-timeline { display: grid; gap: 8px; align-items: end; }
+        .registry-editor-header { grid-template-columns: 2fr 1fr 1fr auto; }
+        .registry-editor-meta { grid-template-columns: 1fr 1fr 1.5fr; }
+        .registry-editor-timeline { grid-template-columns: 1fr 1.5fr; }
+        .registry-edit-field { display: grid; gap: 3px; color: var(--accent-dim); font-size: 0.65rem; letter-spacing: 0.5px; }
+        .registry-remove { border-color: var(--accent-red); color: var(--accent-red); }
+        .inventory-item.pending-removal { border-color: var(--accent-red); opacity: 0.55; }
 
     </style>
 </head>
@@ -809,7 +816,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.5.0 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.6.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1804,7 +1811,7 @@
             }
 
             items.forEach(item => {
-                let itemClass = '', timerClass = 'timer-ok', timerText = `T-${item.daysLeft}D`;
+                let itemClass = '', timerClass = 'timer-ok', timerText = `${item.daysLeft} DAYS LEFT`;
                 if (item.daysLeft <= 0) { itemClass = 'expired'; timerClass = 'timer-critical'; timerText = 'DEGRADED'; }
                 else if (item.daysLeft <= 3) { itemClass = 'expiring'; timerClass = 'timer-warning'; }
                 else if (item.daysLeft > 7) { itemClass = 'fresh'; }
@@ -1818,12 +1825,10 @@
                 if (registryEditMode) {
                     const editor = document.createElement('div');
                     editor.className = 'registry-editor';
-                    const fields = [
-                        ['name', 'text', item.name], ['quantity', 'number', item.quantity], ['unit', 'text', item.unit || 'unit'],
-                        ['category', 'text', item.category], ['location', 'text', item.location], ['shelfLife', 'number', item.shelfLife],
-                        ['addedDate', 'datetime-local', formatDateTimeLocal(item.addedDate)]
-                    ];
-                    fields.forEach(([field, type, value]) => {
+                    const createField = (field, labelText, type, value) => {
+                        const label = document.createElement('label');
+                        label.className = 'registry-edit-field';
+                        label.appendChild(document.createTextNode(labelText));
                         const input = document.createElement('input');
                         input.className = 'registry-field';
                         input.dataset.field = field;
@@ -1831,8 +1836,41 @@
                         input.value = value;
                         input.setAttribute('aria-label', `${item.name} ${field}`);
                         if (type === 'number') input.min = field === 'quantity' ? '0' : '1';
-                        editor.appendChild(input);
+                        label.appendChild(input);
+                        return label;
+                    };
+                    const header = document.createElement('div');
+                    header.className = 'registry-editor-header';
+                    header.append(
+                        createField('name', 'ASSET NAME', 'text', item.name),
+                        createField('quantity', 'QUANTITY', 'number', item.quantity),
+                        createField('unit', 'UNIT', 'text', item.unit || 'unit')
+                    );
+                    const removeButton = document.createElement('button');
+                    removeButton.type = 'button';
+                    removeButton.className = 'config-button registry-remove';
+                    removeButton.textContent = 'REMOVE';
+                    removeButton.addEventListener('click', () => {
+                        const removing = inventoryItem.dataset.remove !== 'true';
+                        inventoryItem.dataset.remove = String(removing);
+                        inventoryItem.classList.toggle('pending-removal', removing);
+                        removeButton.textContent = removing ? 'RESTORE' : 'REMOVE';
                     });
+                    header.appendChild(removeButton);
+                    const metaEditor = document.createElement('div');
+                    metaEditor.className = 'registry-editor-meta';
+                    metaEditor.append(
+                        createField('category', 'CATEGORY', 'text', item.category),
+                        createField('location', 'LOCATION', 'text', item.location),
+                        createField('addedDate', 'STORED DATE / TIME', 'datetime-local', formatDateTimeLocal(item.addedDate))
+                    );
+                    const timelineEditor = document.createElement('div');
+                    timelineEditor.className = 'registry-editor-timeline';
+                    timelineEditor.append(
+                        createField('shelfLife', 'TOTAL DEGRADATION DAYS', 'number', item.shelfLife),
+                        createDegradationIndicator(item)
+                    );
+                    editor.append(header, metaEditor, timelineEditor);
                     inventoryItem.appendChild(editor);
                     list.appendChild(inventoryItem);
                     return;
@@ -1866,12 +1904,31 @@
 
                 const timer = document.createElement('div');
                 timer.classList.add('item-timer', timerClass);
-                timer.textContent = `${timerText} | DEGRADATION: ${item.shelfLife} days`;
+                const visual = getDegradationVisual(item);
+                timer.textContent = `${timerText} | ${visual.percent}% REMAINING | DEGRADATION: ${item.shelfLife} days`;
+                timer.style.color = visual.color;
+                timer.style.borderColor = visual.color;
                 attachLongPressEditor(timer, item, 'shelfLife');
 
                 inventoryItem.append(itemHeader, meta, timer);
                 list.appendChild(inventoryItem);
             });
+        }
+
+        function getDegradationVisual(item) {
+            const percent = Math.max(0, Math.min(100, Math.round((Number(item.daysLeft) / Number(item.shelfLife)) * 100)));
+            const hue = percent <= 30 ? 0 : Math.round(((percent - 30) / 70) * 120);
+            return { percent, color: `hsl(${hue} 85% 55%)` };
+        }
+
+        function createDegradationIndicator(item) {
+            const visual = getDegradationVisual(item);
+            const indicator = document.createElement('div');
+            indicator.className = 'item-timer';
+            indicator.style.color = visual.color;
+            indicator.style.borderColor = visual.color;
+            indicator.textContent = `${item.daysLeft} DAYS LEFT | ${visual.percent}% REMAINING`;
+            return indicator;
         }
 
         function setRegistryEditMode(enabled) {
@@ -1893,9 +1950,10 @@
         function saveManualRegistry() {
             const items = getInventory();
             const editors = [...document.querySelectorAll('#inventoryList .inventory-item[data-item-id]')];
+            const removedIds = new Set(editors.filter(editor => editor.dataset.remove === 'true').map(editor => editor.dataset.itemId));
             for (const editor of editors) {
                 const target = items.find(item => String(item.id) === editor.dataset.itemId);
-                if (!target) continue;
+                if (!target || removedIds.has(editor.dataset.itemId)) continue;
                 const value = field => editor.querySelector(`[data-field="${field}"]`).value.trim();
                 const name = normalizeItemName(value('name'));
                 const quantity = Number(value('quantity'));
@@ -1908,9 +1966,9 @@
                 }
                 Object.assign(target, { name, quantity, unit: value('unit') || 'unit', category: normalizeItemName(value('category')) || 'general', location, shelfLife, addedDate: addedDate.toISOString(), lastModified: getDeviceNow().toISOString() });
             }
-            saveInventory(items.filter(item => item.quantity > 0));
+            saveInventory(items.filter(item => item.quantity > 0 && !removedIds.has(String(item.id))));
             setRegistryEditMode(false);
-            addMessage('Manual registry changes saved.', 'system');
+            addMessage(`Manual registry changes saved.${removedIds.size ? ` Removed ${removedIds.size} item(s).` : ''}`, 'system');
         }
 
         // --- CHAT INTERFACE ---
@@ -2243,7 +2301,12 @@
             addMessage(text, 'user');
             showTyping(true);
 
-            const localResponse = await handleLocalCommand(text);
+            let localResponse;
+            try {
+                localResponse = await handleLocalCommand(text);
+            } catch (error) {
+                localResponse = { message: error.message || 'Unexpected command-processing anomaly.', error: true };
+            }
             if (localResponse && localResponse.type !== 'powered_parse') {
                 if (localResponse.type === 'pending') {
                     showTyping(false);
