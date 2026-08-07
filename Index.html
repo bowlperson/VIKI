@@ -789,6 +789,23 @@
             opacity: 0.5;
         }
 
+        .registry-actions { display: flex; gap: 6px; align-items: center; }
+        .registry-edit-action { display: none; }
+        body.registry-edit-mode .container { grid-template-columns: 1fr; }
+        body.registry-edit-mode .sidebar { width: 100%; max-width: none; }
+        body.registry-edit-mode .main-content { display: none; }
+        body.registry-edit-mode .registry-edit-action { display: inline-flex; }
+        body.registry-edit-mode .inventory-list { max-height: none; }
+        .registry-field { background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-color); color: var(--terminal-fg); padding: 6px; min-width: 0; width: 100%; font-family: inherit; }
+        .registry-editor { display: grid; gap: 8px; width: 100%; }
+        .registry-editor-header, .registry-editor-meta, .registry-editor-timeline { display: grid; gap: 8px; align-items: end; }
+        .registry-editor-header { grid-template-columns: 2fr 1fr 1fr auto; }
+        .registry-editor-meta { grid-template-columns: 1fr 1fr 1.5fr; }
+        .registry-editor-timeline { grid-template-columns: 1fr 1.5fr; }
+        .registry-edit-field { display: grid; gap: 3px; color: var(--accent-dim); font-size: 0.65rem; letter-spacing: 0.5px; }
+        .registry-remove { border-color: var(--accent-red); color: var(--accent-red); }
+        .inventory-item.pending-removal { border-color: var(--accent-red); opacity: 0.55; }
+
     </style>
 </head>
 <body>
@@ -799,7 +816,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.0.7 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.6.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -822,7 +839,12 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-title">ASSET_REGISTRY</div>
-                <div class="item-count" id="itemCount">0 assets</div>
+                <div class="registry-actions">
+                    <div class="item-count" id="itemCount">0 assets</div>
+                    <button type="button" class="config-button" id="registryLockButton" aria-pressed="false" title="Unlock manual registry editing">🔒</button>
+                    <button type="button" class="config-button registry-edit-action" id="saveRegistryButton">SAVE</button>
+                    <button type="button" class="config-button registry-edit-action" id="exportRegistryButton">EXPORT</button>
+                </div>
             </div>
             <button type="button" class="collapsible-heading" id="filterCollapseButton" aria-expanded="true" aria-controls="filterContent">
                 <span>SEARCH_ASSETS // FILTERS</span><span class="collapse-arrow" aria-hidden="true">▼</span>
@@ -1016,6 +1038,16 @@
                         <input type="file" id="importDataInput" accept="application/json,.json" hidden>
                     </div>
                 </section>
+                <section class="settings-section">
+                    <div class="config-title">// DEGRADATION EMAILS [EMAILJS]</div>
+                    <div class="toggle-row"><input type="checkbox" id="emailNotificationsEnabled"><label class="toggle-label" for="emailNotificationsEnabled">SEND ALERTS AT T-3 DAYS OR LESS</label></div>
+                    <div class="config-row"><label class="config-label" for="notificationEmails">RECIPIENT_EMAILS</label><input class="config-input" id="notificationEmails" type="text" placeholder="name@example.com, second@example.com"></div>
+                    <div class="config-row"><label class="config-label" for="emailJsServiceId">EMAILJS_SERVICE_ID</label><input class="config-input" id="emailJsServiceId" type="text" placeholder="service_xxxxx"></div>
+                    <div class="config-row"><label class="config-label" for="emailJsTemplateId">EMAILJS_TEMPLATE_ID</label><input class="config-input" id="emailJsTemplateId" type="text" placeholder="template_xxxxx"></div>
+                    <div class="config-row"><label class="config-label" for="emailJsPublicKey">EMAILJS_PUBLIC_KEY</label><input class="config-input" id="emailJsPublicKey" type="password" placeholder="PUBLIC_KEY"></div>
+                    <div class="config-help">Browser-safe EmailJS public credentials only. Do not enter a Twilio/SendGrid secret API key here. Template variables: to_email, item_name, quantity, location, days_left, message.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="saveEmailSettingsButton">SAVE_EMAIL_SETTINGS</button></div>
+                </section>
             </div>
         </div>
     </section>
@@ -1032,6 +1064,8 @@
         const FALLBACK_LOCATION_KEY = 'viki_fallback_location';
         const MATCHING_PRIORITY_KEY = 'viki_matching_priority';
         const SPEECH_SETTINGS_KEY = 'viki_speech_settings';
+        const EMAIL_SETTINGS_KEY = 'viki_email_settings';
+        const EMAIL_ALERT_LEDGER_KEY = 'viki_email_alert_ledger';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -1068,7 +1102,10 @@
         let currentVoiceState = 'standby';
         let poweredMode = false;
         let speechMuted = false;
+        let registryEditMode = false;
         let availableSpeechVoices = [];
+        const aiConversation = [];
+        const AI_HISTORY_LIMIT = 10;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -1083,6 +1120,7 @@
 
             document.getElementById('fallbackLocation').value = localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge';
             document.getElementById('matchingPriority').value = localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first';
+            loadEmailSettings();
 
             initializeFilterTabs();
             loadAssetDatabase();
@@ -1095,7 +1133,14 @@
             updateDeviceDateTime();
             renderBootMessages();
             setInterval(updateDeviceDateTime, 1000);
+            setInterval(refreshDegradationState, 60 * 1000);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDegradationState(); });
         });
+
+        function refreshDegradationState() {
+            if (!registryEditMode) renderInventory();
+            checkExpiringItems();
+        }
 
         function getModelSettingsForExport() {
             return {
@@ -1123,6 +1168,68 @@
             link.remove();
             URL.revokeObjectURL(url);
             addMessage('EXPORT_DATA complete. Registry package staged for download.', 'system');
+        }
+
+        function getEmailSettings() {
+            return { enabled: false, recipients: '', serviceId: '', templateId: '', publicKey: '', ...JSON.parse(localStorage.getItem(EMAIL_SETTINGS_KEY) || '{}') };
+        }
+
+        function loadEmailSettings() {
+            const settings = getEmailSettings();
+            document.getElementById('emailNotificationsEnabled').checked = settings.enabled;
+            document.getElementById('notificationEmails').value = settings.recipients;
+            document.getElementById('emailJsServiceId').value = settings.serviceId;
+            document.getElementById('emailJsTemplateId').value = settings.templateId;
+            document.getElementById('emailJsPublicKey').value = settings.publicKey;
+        }
+
+        function saveEmailSettings() {
+            const settings = {
+                enabled: document.getElementById('emailNotificationsEnabled').checked,
+                recipients: document.getElementById('notificationEmails').value.split(',').map(value => value.trim()).filter(Boolean).join(', '),
+                serviceId: document.getElementById('emailJsServiceId').value.trim(),
+                templateId: document.getElementById('emailJsTemplateId').value.trim(),
+                publicKey: document.getElementById('emailJsPublicKey').value.trim()
+            };
+            if (settings.enabled && (!settings.recipients || !settings.serviceId || !settings.templateId || !settings.publicKey)) {
+                addMessage('Email alerts require at least one recipient plus all EmailJS fields.', 'error');
+                return;
+            }
+            localStorage.setItem(EMAIL_SETTINGS_KEY, JSON.stringify(settings));
+            addMessage('Degradation email settings saved.', 'system');
+            checkDegradationEmailNotifications();
+        }
+
+        async function checkDegradationEmailNotifications() {
+            const settings = getEmailSettings();
+            if (!settings.enabled || !settings.recipients || !settings.serviceId || !settings.templateId || !settings.publicKey) return;
+            const ledger = JSON.parse(localStorage.getItem(EMAIL_ALERT_LEDGER_KEY) || '{}');
+            const today = getDeviceNow().toISOString().slice(0, 10);
+            const alerts = getExpiringItems().filter(item => item.daysLeft < 4);
+            for (const item of alerts) {
+                const signature = `${item.id}:${item.daysLeft}:${today}`;
+                if (ledger[signature]) continue;
+                const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        service_id: settings.serviceId,
+                        template_id: settings.templateId,
+                        user_id: settings.publicKey,
+                        template_params: {
+                            to_email: settings.recipients,
+                            item_name: item.name,
+                            quantity: item.quantity,
+                            location: item.location,
+                            days_left: item.daysLeft,
+                            message: `${item.name} has ${item.daysLeft} day(s) remaining before degradation.`
+                        }
+                    })
+                });
+                if (!response.ok) throw new Error(`EmailJS rejected the ${item.name} alert (${response.status}).`);
+                ledger[signature] = getDeviceNow().toISOString();
+                localStorage.setItem(EMAIL_ALERT_LEDGER_KEY, JSON.stringify(ledger));
+            }
         }
 
         function isPlainObject(value) {
@@ -1372,7 +1479,7 @@
             checkExpiringItems();
         }
 
-        function addItem(name, quantity = 1, location = null, customShelfLife = null, category = null, unit = 'unit', note = '') {
+        function addItem(name, quantity = 1, location = null, customShelfLife = null, category = null, unit = 'unit', note = '', addedDate = null) {
             const items = getInventory();
             const normalizedName = normalizeItemName(name);
             const assetInfo = getAssetInfo(normalizedName);
@@ -1381,7 +1488,12 @@
             const finalShelfLife = customShelfLife || assetInfo.days || 14;
             const finalCategory = category || assetInfo.category || 'general';
 
-            const existing = items.find(i => i.name.toLowerCase() === normalizedName && i.location === finalLocation);
+            const receivedAt = addedDate ? new Date(addedDate) : getDeviceNow();
+            if (Number.isNaN(receivedAt.getTime()) || receivedAt > getDeviceNow()) throw new Error('Added date must be a valid date that is not in the future.');
+            const receivedDay = receivedAt.toISOString().slice(0, 10);
+            const existing = items.find(i => i.name.toLowerCase() === normalizedName
+                && i.location === finalLocation
+                && new Date(i.addedDate).toISOString().slice(0, 10) === receivedDay);
 
             if (existing) {
                 existing.quantity += quantity;
@@ -1398,7 +1510,7 @@
                     note: note || '',
                     category: finalCategory,
                     location: finalLocation,
-                    addedDate: getDeviceNow().toISOString(),
+                    addedDate: receivedAt.toISOString(),
                     shelfLife: finalShelfLife,
                     lastUsed: null,
                     lastAdded: getDeviceNow().toISOString()
@@ -1408,7 +1520,7 @@
             saveInventory(items);
             return {
                 message: `Added ${quantity} ${unit || 'unit'}(s) of ${normalizedName} to ${finalLocation} registry.`,
-                details: { name: normalizedName, quantity, unit: unit || 'unit', note: note || '', location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, daysLeft: finalShelfLife }
+                details: { name: normalizedName, quantity, unit: unit || 'unit', note: note || '', location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, addedDate: receivedAt.toISOString(), daysLeft: Math.ceil(((receivedAt.getTime() + finalShelfLife * MS_PER_DAY) - getDeviceNow()) / MS_PER_DAY) }
             };
         }
 
@@ -1482,6 +1594,7 @@
             const alert = document.getElementById('expiringAlert');
             alert.textContent = `CRITICAL: ${expiring.length} nutritional asset(s) approaching degradation threshold`;
             alert.classList.toggle('show', expiring.length > 0);
+            checkDegradationEmailNotifications().catch(error => addMessage(`Email alert failed: ${error.message}`, 'error'));
         }
 
         function getInventoryControls() {
@@ -1698,15 +1811,70 @@
             }
 
             items.forEach(item => {
-                let itemClass = '', timerClass = 'timer-ok', timerText = `T-${item.daysLeft}D`;
+                let itemClass = '', timerClass = 'timer-ok', timerText = `${item.daysLeft} DAYS LEFT`;
                 if (item.daysLeft <= 0) { itemClass = 'expired'; timerClass = 'timer-critical'; timerText = 'DEGRADED'; }
                 else if (item.daysLeft <= 3) { itemClass = 'expiring'; timerClass = 'timer-warning'; }
                 else if (item.daysLeft > 7) { itemClass = 'fresh'; }
 
                 const inventoryItem = document.createElement('div');
                 inventoryItem.classList.add('inventory-item');
+                inventoryItem.dataset.itemId = item.id;
                 if (itemClass) inventoryItem.classList.add(itemClass);
-                inventoryItem.addEventListener('click', () => quickMessage(`Analyze ${item.name}`));
+                if (!registryEditMode) inventoryItem.addEventListener('click', () => quickMessage(`Analyze ${item.name}`));
+
+                if (registryEditMode) {
+                    const editor = document.createElement('div');
+                    editor.className = 'registry-editor';
+                    const createField = (field, labelText, type, value) => {
+                        const label = document.createElement('label');
+                        label.className = 'registry-edit-field';
+                        label.appendChild(document.createTextNode(labelText));
+                        const input = document.createElement('input');
+                        input.className = 'registry-field';
+                        input.dataset.field = field;
+                        input.type = type;
+                        input.value = value;
+                        input.setAttribute('aria-label', `${item.name} ${field}`);
+                        if (type === 'number') input.min = field === 'quantity' ? '0' : '1';
+                        label.appendChild(input);
+                        return label;
+                    };
+                    const header = document.createElement('div');
+                    header.className = 'registry-editor-header';
+                    header.append(
+                        createField('name', 'ASSET NAME', 'text', item.name),
+                        createField('quantity', 'QUANTITY', 'number', item.quantity),
+                        createField('unit', 'UNIT', 'text', item.unit || 'unit')
+                    );
+                    const removeButton = document.createElement('button');
+                    removeButton.type = 'button';
+                    removeButton.className = 'config-button registry-remove';
+                    removeButton.textContent = 'REMOVE';
+                    removeButton.addEventListener('click', () => {
+                        const removing = inventoryItem.dataset.remove !== 'true';
+                        inventoryItem.dataset.remove = String(removing);
+                        inventoryItem.classList.toggle('pending-removal', removing);
+                        removeButton.textContent = removing ? 'RESTORE' : 'REMOVE';
+                    });
+                    header.appendChild(removeButton);
+                    const metaEditor = document.createElement('div');
+                    metaEditor.className = 'registry-editor-meta';
+                    metaEditor.append(
+                        createField('category', 'CATEGORY', 'text', item.category),
+                        createField('location', 'LOCATION', 'text', item.location),
+                        createField('addedDate', 'STORED DATE / TIME', 'datetime-local', formatDateTimeLocal(item.addedDate))
+                    );
+                    const timelineEditor = document.createElement('div');
+                    timelineEditor.className = 'registry-editor-timeline';
+                    timelineEditor.append(
+                        createField('shelfLife', 'TOTAL DEGRADATION DAYS', 'number', item.shelfLife),
+                        createDegradationIndicator(item)
+                    );
+                    editor.append(header, metaEditor, timelineEditor);
+                    inventoryItem.appendChild(editor);
+                    list.appendChild(inventoryItem);
+                    return;
+                }
 
                 const itemHeader = document.createElement('div');
                 itemHeader.className = 'item-header';
@@ -1736,12 +1904,71 @@
 
                 const timer = document.createElement('div');
                 timer.classList.add('item-timer', timerClass);
-                timer.textContent = `${timerText} | DEGRADATION: ${item.shelfLife} days`;
+                const visual = getDegradationVisual(item);
+                timer.textContent = `${timerText} | ${visual.percent}% REMAINING | DEGRADATION: ${item.shelfLife} days`;
+                timer.style.color = visual.color;
+                timer.style.borderColor = visual.color;
                 attachLongPressEditor(timer, item, 'shelfLife');
 
                 inventoryItem.append(itemHeader, meta, timer);
                 list.appendChild(inventoryItem);
             });
+        }
+
+        function getDegradationVisual(item) {
+            const percent = Math.max(0, Math.min(100, Math.round((Number(item.daysLeft) / Number(item.shelfLife)) * 100)));
+            const hue = percent <= 30 ? 0 : Math.round(((percent - 30) / 70) * 120);
+            return { percent, color: `hsl(${hue} 85% 55%)` };
+        }
+
+        function createDegradationIndicator(item) {
+            const visual = getDegradationVisual(item);
+            const indicator = document.createElement('div');
+            indicator.className = 'item-timer';
+            indicator.style.color = visual.color;
+            indicator.style.borderColor = visual.color;
+            indicator.textContent = `${item.daysLeft} DAYS LEFT | ${visual.percent}% REMAINING`;
+            return indicator;
+        }
+
+        function setRegistryEditMode(enabled) {
+            registryEditMode = enabled;
+            document.body.classList.toggle('registry-edit-mode', enabled);
+            const lockButton = document.getElementById('registryLockButton');
+            lockButton.textContent = enabled ? '🔓' : '🔒';
+            lockButton.setAttribute('aria-pressed', String(enabled));
+            lockButton.title = enabled ? 'Lock registry without saving' : 'Unlock manual registry editing';
+            renderInventory();
+        }
+
+        function formatDateTimeLocal(value) {
+            const date = new Date(value);
+            const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+            return local.toISOString().slice(0, 16);
+        }
+
+        function saveManualRegistry() {
+            const items = getInventory();
+            const editors = [...document.querySelectorAll('#inventoryList .inventory-item[data-item-id]')];
+            const removedIds = new Set(editors.filter(editor => editor.dataset.remove === 'true').map(editor => editor.dataset.itemId));
+            for (const editor of editors) {
+                const target = items.find(item => String(item.id) === editor.dataset.itemId);
+                if (!target || removedIds.has(editor.dataset.itemId)) continue;
+                const value = field => editor.querySelector(`[data-field="${field}"]`).value.trim();
+                const name = normalizeItemName(value('name'));
+                const quantity = Number(value('quantity'));
+                const shelfLife = Number(value('shelfLife'));
+                const location = value('location').toLowerCase();
+                const addedDate = new Date(value('addedDate'));
+                if (!name || !Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(shelfLife) || shelfLife <= 0 || !['fridge', 'freezer', 'cupboard'].includes(location) || Number.isNaN(addedDate.getTime()) || addedDate > getDeviceNow()) {
+                    addMessage(`Manual registry save rejected for ${target.name}. Check name, quantity, location, shelf life, and stored date. Future dates are not allowed.`, 'error');
+                    return;
+                }
+                Object.assign(target, { name, quantity, unit: value('unit') || 'unit', category: normalizeItemName(value('category')) || 'general', location, shelfLife, addedDate: addedDate.toISOString(), lastModified: getDeviceNow().toISOString() });
+            }
+            saveInventory(items.filter(item => item.quantity > 0 && !removedIds.has(String(item.id))));
+            setRegistryEditMode(false);
+            addMessage(`Manual registry changes saved.${removedIds.size ? ` Removed ${removedIds.size} item(s).` : ''}`, 'system');
         }
 
         // --- CHAT INTERFACE ---
@@ -2038,6 +2265,23 @@
             return { type: 'pending' };
         }
 
+        function showFinalConfirmation(summary, onConfirm, cancelMessage = 'Operation cancelled. No changes were made.') {
+            pendingQuestions = {
+                questions: [],
+                cancelMessage,
+                handleReply(reply) {
+                    if (/^(?:yes|confirm|confirmed|correct|proceed)$/i.test(reply.trim())) {
+                        pendingQuestions = null;
+                        onConfirm();
+                        return;
+                    }
+                    addMessage(`${summary}\n\nReply CONFIRM or CANCEL.`, 'assistant');
+                }
+            };
+            addMessage(`${summary}\n\nIs this correct? Reply CONFIRM or CANCEL.`, 'assistant');
+            return { type: 'pending' };
+        }
+
         // --- COMMAND PROCESSING ---
 
         async function sendMessage() {
@@ -2048,6 +2292,7 @@
                 input.value = '';
                 addMessage(text, 'user');
                 if (/^(?:cancel|no|stop|never mind)$/i.test(text)) cancelPendingQuestions();
+                else if (pendingQuestions.handleReply) pendingQuestions.handleReply(text);
                 else submitPendingQuestions(text);
                 return;
             }
@@ -2056,17 +2301,22 @@
             addMessage(text, 'user');
             showTyping(true);
 
-            const localResponse = await handleLocalCommand(text);
-            if (localResponse) {
+            let localResponse;
+            try {
+                localResponse = await handleLocalCommand(text);
+            } catch (error) {
+                localResponse = { message: error.message || 'Unexpected command-processing anomaly.', error: true };
+            }
+            if (localResponse && localResponse.type !== 'powered_parse') {
                 if (localResponse.type === 'pending') {
                     showTyping(false);
                     return;
                 }
                 if (localResponse.error) {
                     try {
-                        const response = await callAI(`The request "${text}" did not match a local command because: "${localResponse.message}". Continue naturally as VIKI. If there is a likely intended command, ask "Did you mean ...?" and return the corresponding action so a simple yes can confirm it. Do not expose internal routing or mention AI assistance.`);
+                        const response = await callAI(`OPERATOR REQUEST REVIEW: The request "${text}" produced this application error: "${localResponse.message}". Review both messages and determine the most likely correction. Your message must begin "Did you mean" and briefly state the corrected interpretation or explain what must change. Return the corresponding action when the correction is executable. The application will require CONFIRM or CANCEL before applying it. Never claim the correction already happened.`);
                         showTyping(false);
-                        addMessage(response, 'powered');
+                        if (response) addMessage(response, 'powered');
                     } catch (error) {
                         showTyping(false);
                         addMessage(`${localResponse.message}\nI could not extend interpretation: ${error.message}`, 'error');
@@ -2081,7 +2331,7 @@
             try {
                 const response = await callAI(text);
                 showTyping(false);
-                addMessage(response, 'powered');
+                if (response) addMessage(response, 'powered');
             } catch (error) {
                 showTyping(false);
                 addMessage(`Connection failed: ${error.message}`, 'error');
@@ -2099,27 +2349,51 @@
             return Number.isFinite(parsed) ? parsed : null;
         }
 
+        function extractAddedDatePhrase(text) {
+            const relativeDate = '(today|yesterday|(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten)\\s+days?\\s+ago)';
+            const attributionPattern = new RegExp(`(?:\\s*[,.;]\\s*|\\s+)(?:(?:which|that)\\s+)?(?:i\\s+)?(?:bought|purchased|got|received|stored)(?:\\s+it)?\\s+(?:from\\s+)?${relativeDate}(?=\\s+(?:to|in)\\s+(?:the\\s+)?(?:fridge|freezer|cupboard)\\b|\\s+(?:with|note|notes?)\\b|[.!?]*$)`, 'i');
+            const bareRelativePattern = new RegExp(`\\s+(?:from\\s+)?${relativeDate}(?=\\s+(?:to|in)\\s+(?:the\\s+)?(?:fridge|freezer|cupboard)\\b|\\s+(?:with|note|notes?)\\b|[.!?]*$)`, 'i');
+            const match = text.match(attributionPattern) || text.match(bareRelativePattern);
+            if (!match) return { text, addedDate: null };
+            const phrase = match[1].toLowerCase();
+            let daysAgo = 0;
+            if (phrase === 'yesterday') daysAgo = 1;
+            else if (phrase !== 'today') daysAgo = parseCommandQuantity(phrase.match(/^(\d+|\w+)/)[1]);
+            if (!Number.isFinite(daysAgo) || daysAgo < 0) return { text, addedDate: null };
+            const added = getDeviceNow();
+            added.setDate(added.getDate() - daysAgo);
+            return { text: `${text.slice(0, match.index)}${text.slice(match.index + match[0].length)}`.replace(/\s+/g, ' ').trim(), addedDate: added.toISOString() };
+        }
+
         function parseInventoryPhrase(text, mode) {
             const locations = '(fridge|freezer|cupboard)';
             const quantityPattern = '(\\d+(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|dozen|half|quarter)';
             const unitPattern = '(cans?|bags?|boxes?|cartons?|pounds?|lbs?|ounces?|oz|grams?|g|liters?|litres?|l|bottles?|jars?|packages?|packs?)';
-            const clean = text.toLowerCase().replace(/\s+/g, ' ').trim();
+            const datedInput = mode === 'add' ? extractAddedDatePhrase(text) : { text, addedDate: null };
+            const clean = datedInput.text.toLowerCase().replace(/\s+/g, ' ').trim();
             let match;
 
             if (mode === 'add') {
-                match = clean.match(new RegExp(`^(?:add|added|bought|got|purchased)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+(?:of\\s+)?)?(.+?)(?:\\s+to\\s+${locations})?(?:\\s+(?:with|note|notes?)\\s+(.+))?$`, 'i'));
+                match = clean.match(new RegExp(`^(?:add|added|bought|got|purchased|received|stored)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+(?:of\\s+)?)?(.+?)(?:\\s+to\\s+${locations})?(?:\\s+(?:with|note|notes?)\\s+(.+))?$`, 'i'));
                 if (!match) return null;
-                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null, note: (match[5] || '').trim() };
+                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null, note: (match[5] || '').trim(), addedDate: datedInput.addedDate };
             }
 
             if (mode === 'use') {
-                match = clean.match(new RegExp(`^(?:use|used|ate|consume|consumed)\\s+(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+)?(?:of\\s+)?(?:the\\s+)?(.+?)(?:\\s+from\\s+${locations})?$`, 'i'));
+                match = clean.match(new RegExp(`^(use|used|ate|consume|consumed|remove|removed|toss|tossed|throw away|threw away)\\s+(?:(all)\\s+)?(?:${quantityPattern}\\s+)?(?:${unitPattern}\\s+)?(?:of\\s+)?(?:the\\s+)?(.+?)(?:\\s+from\\s+${locations})?$`, 'i'));
                 if (!match) return null;
-                return { quantity: parseCommandQuantity(match[1]), unit: normalizeUnit(match[2]), item: normalizeItemName(match[3]), location: match[4] || null };
+                return {
+                    verb: match[1].toLowerCase(),
+                    allRequested: Boolean(match[2]),
+                    quantity: parseCommandQuantity(match[3]),
+                    unit: normalizeUnit(match[4]),
+                    item: normalizeItemName(match[5]),
+                    location: match[6] || null
+                };
             }
 
             if (mode === 'move') {
-                match = clean.match(new RegExp(`^(?:move|put|transfer)\\s+(?:the\\s+)?(.+?)\\s+to\\s+${locations}$`, 'i'));
+                match = clean.match(new RegExp(`^(?:(?:please|can you|could you)\\s+)?(?:move|put|transfer)\\s+(?:the\\s+)?(.+?)\\s+(?:to|into)\\s+(?:the\\s+)?${locations}$`, 'i'));
                 if (!match) return null;
                 return { item: normalizeItemName(match[1]), location: match[2] || null };
             }
@@ -2128,38 +2402,115 @@
         }
 
         function parseBatchAddCommands(text) {
-            const parts = text.split(',').map(part => part.trim()).filter(Boolean);
-            if (parts.length < 2 || !parts.every(part => /^add\s+/i.test(part))) return null;
-            const parsed = parts.map(part => parseInventoryPhrase(part, 'add'));
+            const command = text.trim().replace(/[.!?]+$/, '');
+            if (!/^(?:add|added|bought|got|purchased|received|stored)\s+/i.test(command)) return null;
+            const sharedVerb = command.match(/^(add|added|bought|got|purchased|received|stored)\b/i)[1];
+            const remainder = command.replace(/^(?:add|added|bought|got|purchased|received|stored)\s+/i, '');
+            const parts = remainder.split(/\s*,\s*|\s+and\s+(?=(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|dozen|half|quarter)?\s*[a-z])/i)
+                .map(part => part.replace(/^(?:and\s+)?(?:add(?:ed)?|bought|got|purchased|received|stored)?\s*/i, '').trim())
+                .filter(Boolean);
+            if (parts.length < 2) return null;
+            const parsed = parts.map(part => parseInventoryPhrase(`${sharedVerb} ${part}`, 'add'));
             return parsed.every(Boolean) ? parsed : null;
         }
 
-        function queueBatchAddConfirmations(entries, index = 0) {
-            if (index >= entries.length) {
-                addMessage('Batch complete. All approved assets are registered.', 'assistant');
-                return;
-            }
-            const parsed = entries[index];
-            const info = getAssetInfo(parsed.item);
-            const location = parsed.location || info.location || 'fridge';
-            const quantity = parsed.quantity || 1;
-            const shelfLife = Number(info.days) || 14;
-            showConfirmationPanel({
-                title: `BATCH ${index + 1}/${entries.length}:`,
-                summary: `Add ${quantity} ${parsed.unit || 'unit'}(s) of ${parsed.item} to ${location}; ${shelfLife}-day timeline?`,
-                cancelMessage: `${parsed.item} skipped.`,
-                onCancel: () => queueBatchAddConfirmations(entries, index + 1)
-            }, () => {
-                const result = addItem(parsed.item, quantity, location, shelfLife, info.category, parsed.unit, parsed.note);
-                addMessage(result.message, 'assistant');
-                queueBatchAddConfirmations(entries, index + 1);
-            });
+        function formatBatchList(entries) {
+            return entries.map(entry => `${entry.quantity || 1} ${entry.unit || 'unit'}(s) ${entry.item}`).join('\n');
+        }
+
+        function parseBatchRevision(text) {
+            const prefixed = /^(?:add|added|bought|got|purchased|received|stored)\s+/i.test(text.trim()) ? text.trim() : `add ${text.trim()}`;
+            return parseBatchAddCommands(prefixed);
+        }
+
+        function requiresPoweredAdditionParsing(entries) {
+            return entries.some(entry => entry.item.trim().split(/\s+/).length > 1);
+        }
+
+        function showBatchAddConfirmation(entries) {
+            pendingQuestions = {
+                questions: [],
+                cancelMessage: 'List cancelled. No assets were added.',
+                handleReply(reply) {
+                    if (/^(?:yes|confirm|confirmed|correct|proceed|add them)$/i.test(reply.trim())) {
+                        pendingQuestions = null;
+                        entries.forEach(entry => {
+                            const info = getAssetInfo(entry.item);
+                            addItem(entry.item, entry.quantity || 1, entry.location || info.location || 'fridge', Number(info.days) || 14, info.category, entry.unit, entry.note, entry.addedDate);
+                        });
+                        renderInventory();
+                        addMessage(formatBatchList(entries), 'assistant');
+                        return;
+                    }
+
+                    const revision = parseBatchRevision(reply);
+                    if (revision) {
+                        showBatchAddConfirmation(revision);
+                        return;
+                    }
+                    addMessage(`I could not read that adjustment. Send the complete revised list separated by commas.\n\n${formatBatchList(entries)}`, 'assistant');
+                }
+            };
+            addMessage(`${formatBatchList(entries)}\n\nConfirm or send the complete revised list.`, 'assistant');
         }
 
         function normalizeUnit(unit) {
             const value = (unit || 'unit').toLowerCase().trim();
             const aliases = { cans: 'can', bags: 'bag', boxes: 'box', cartons: 'carton', pounds: 'pound', lbs: 'pound', ounces: 'ounce', oz: 'ounce', grams: 'gram', g: 'gram', liters: 'liter', litres: 'liter', l: 'liter', bottles: 'bottle', jars: 'jar', packages: 'package', packs: 'pack' };
             return aliases[value] || value;
+        }
+
+        function getEditDistance(left, right) {
+            const a = left.toLowerCase();
+            const b = right.toLowerCase();
+            const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+            for (let i = 1; i <= a.length; i += 1) {
+                let diagonal = row[0];
+                row[0] = i;
+                for (let j = 1; j <= b.length; j += 1) {
+                    const previous = row[j];
+                    row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+                    diagonal = previous;
+                }
+            }
+            return row[b.length];
+        }
+
+        function findClosestInventoryName(name) {
+            const names = [...new Set(getInventory().map(item => item.name))];
+            const ranked = names.map(candidate => ({ candidate, distance: getEditDistance(name, candidate) }))
+                .sort((left, right) => left.distance - right.distance || left.candidate.localeCompare(right.candidate));
+            const closest = ranked[0];
+            const threshold = Math.max(1, Math.floor(Math.max(name.length, closest?.candidate.length || 0) / 3));
+            return closest && closest.distance <= threshold ? closest.candidate : null;
+        }
+
+        function requestRemovalSpellingCorrection(requestedName, retry) {
+            const suggestion = findClosestInventoryName(requestedName);
+            pendingQuestions = {
+                questions: [],
+                cancelMessage: 'Removal cancelled. The registry is unchanged.',
+                handleReply(reply) {
+                    const response = reply.trim();
+                    if (suggestion && /^(?:yes|confirm|correct)$/i.test(response)) {
+                        pendingQuestions = null;
+                        retry(suggestion);
+                        return;
+                    }
+                    const correctedName = normalizeItemName(response.replace(/^(?:it is|i meant|correct spelling is)\s+/i, ''));
+                    if (getMatchingItems(correctedName).length > 0) {
+                        pendingQuestions = null;
+                        retry(correctedName);
+                        return;
+                    }
+                    addMessage(`I still cannot find "${correctedName || requestedName}". Enter the item name exactly as shown in the registry, or CANCEL.`, 'assistant');
+                }
+            };
+            const prompt = suggestion
+                ? `I cannot find "${requestedName}". Did you mean "${suggestion}"? Reply YES or enter the correct item name.`
+                : `I cannot find "${requestedName}". Enter the item name exactly as shown in the registry, or CANCEL.`;
+            addMessage(prompt, 'assistant');
+            return { type: 'pending' };
         }
 
         function moveItem(name, destination, itemId = null) {
@@ -2177,9 +2528,16 @@
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
 
+            // Device time is authoritative and does not require a network or AI call.
+            if (/^(?:what(?:'s| is) (?:the )?(?:date|time|day)|what(?:'s| is) today|today(?:'s)? date|current (?:date|time))\??$/i.test(text.trim())) {
+                const now = getDeviceNow();
+                return { message: `Operator, today is ${now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. Device time is ${now.toLocaleTimeString()}.` };
+            }
+
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
-                queueBatchAddConfirmations(batchAdds);
+                if (requiresPoweredAdditionParsing(batchAdds)) return { type: 'powered_parse' };
+                showBatchAddConfirmation(batchAdds);
                 return { type: 'pending' };
             }
 
@@ -2230,44 +2588,54 @@
             const addParsed = parseInventoryPhrase(text, 'add');
             if (addParsed) {
                 const item = addParsed.item;
+                if (requiresPoweredAdditionParsing([addParsed])) return { type: 'powered_parse' };
                 const assetInfo = getAssetInfo(item);
                 if (assetInfo.inferred) {
                     await recommendUnknownItem(addParsed, assetInfo);
                     return { type: 'pending' };
                 }
-                const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note);
+                const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note, addParsed.addedDate);
                 const inference = !addParsed.location ? ' VIKI selected this location using saved sorting rules and preset food logic.' : '';
                 return { message: `${result.message} Location: ${result.details.location.toUpperCase()}. Category: ${result.details.category.toUpperCase()}. Degradation timeline: ${result.details.shelfLife} days.${inference} Current status: ${result.details.daysLeft} days until degradation.` };
             }
 
-            const useParsed = parseInventoryPhrase(text, 'use');
+            const wholeRegistryRemoval = /^(?:(?:please|can you|could you|would you)\s+)*(?:delete|remove|clear|discard|empty|wipe|get rid of)\s+(?:(?:out|away|all of)\s+)?(?:everything|all|the whole inventory|the entire inventory|all items|all assets)(?:\s+(?:from|in)\s+(?:the\s+)?(?:inventory|registry))?[.!?]*$/i.test(text.trim());
+            const useParsed = wholeRegistryRemoval ? null : parseInventoryPhrase(text, 'use');
             if (useParsed) {
-                const buildConsumeConfirmation = (quantity) => {
-                    const matches = getMatchingItems(useParsed.item, useParsed.location);
-                    if (matches.length === 0) return { message: `ERROR: ${useParsed.item} not found in registry.`, error: true };
+                const removalVerb = /^(?:remove|removed|toss|tossed|throw away|threw away)$/.test(useParsed.verb);
+                const buildConsumeConfirmation = (quantity, itemName = useParsed.item) => {
+                    const matches = getMatchingItems(itemName, useParsed.location);
+                    if (matches.length === 0) return requestRemovalSpellingCorrection(itemName, correctedName => {
+                        const response = buildConsumeConfirmation(quantity, correctedName);
+                        if (response && response.type !== 'pending') addMessage(response.message, response.error ? 'error' : 'assistant');
+                    });
                     const quantityMatches = matches.filter(item => item.quantity >= quantity);
-                    if (quantityMatches.length === 0) return { message: `ERROR: Insufficient quantity for ${useParsed.item}.`, error: true };
+                    if (quantityMatches.length === 0) return { message: `ERROR: Insufficient quantity for ${itemName}. Available: ${Math.max(...matches.map(item => item.quantity))}.`, error: true };
                     const deletesItem = quantityMatches.some(item => item.quantity === quantity);
                     const needsSelection = quantityMatches.length > 1;
-                    const uncertainParsing = !useParsed.unit && text.split(/\s+/).length <= 3;
-                    if (!deletesItem && !needsSelection && !uncertainParsing) {
-                        const result = useItem(useParsed.item, quantity, useParsed.location, quantityMatches[0].id);
-                        return { message: result.error || result.message, error: !!result.error };
-                    }
-                    const reasons = [];
+                    const reasons = ['unit removal requires confirmation'];
                     if (deletesItem) reasons.push('requested quantity will consume all remaining stock for at least one match');
                     if (needsSelection) reasons.push('multiple matching assets were found');
-                    if (uncertainParsing) reasons.push('command parsing is uncertain');
                     return withOperationConfirmation({
-                        summary: `Operation: consume ${quantity} ${useParsed.unit || 'unit'}(s) of ${useParsed.item}.\nReason: ${reasons.join('; ')}.`,
+                        summary: `Remove ${quantity} ${useParsed.unit || 'unit'}(s) of ${itemName}?\nRemaining after confirmation: ${quantityMatches[0].quantity - quantity}.\nReason: ${reasons.join('; ')}.`,
                         questions: needsSelection ? [buildItemSelectionQuestion(quantityMatches)] : [],
-                        confirmText: deletesItem ? 'CONFIRM DEPLETION' : 'CONFIRM CONSUME'
+                        confirmText: deletesItem ? 'CONFIRM DEPLETION' : 'CONFIRM UNIT REMOVAL'
                     }, (answers) => {
                         const itemId = needsSelection ? answers[0] : quantityMatches[0].id;
-                        const result = useItem(useParsed.item, quantity, useParsed.location, itemId);
+                        const result = useItem(itemName, quantity, useParsed.location, itemId);
                         addMessage(result.error || result.message, result.error ? 'error' : 'assistant');
                     });
                 };
+
+                if (removalVerb && (useParsed.allRequested || !useParsed.quantity)) {
+                    const matches = getMatchingItems(useParsed.item, useParsed.location);
+                    if (matches.length === 0) return requestRemovalSpellingCorrection(useParsed.item, correctedName => {
+                        const correctedMatches = getMatchingItems(correctedName, useParsed.location);
+                        const response = buildConsumeConfirmation(correctedMatches[0].quantity, correctedName);
+                        if (response && response.type !== 'pending') addMessage(response.message, response.error ? 'error' : 'assistant');
+                    });
+                    return buildConsumeConfirmation(matches[0].quantity);
+                }
 
                 if (!useParsed.quantity) {
                     showPendingQuestions([{ type: 'number', placeholder: 'QUANTITY USED', step: 0.25 }], (answers) => {
@@ -2365,7 +2733,7 @@
                 });
             }
 
-            const removeMatch = lower.match(/(?:delete|remove|discard|throw away)\s+(?:the\s+)?(.+?)(?:\s+from\s+(fridge|freezer|cupboard))?$/i);
+            const removeMatch = lower.match(/(?:delete|discard)\s+(?:the\s+)?(.+?)(?:\s+from\s+(fridge|freezer|cupboard))?$/i);
             if (removeMatch) {
                 const item = normalizeItemName(removeMatch[1]);
                 const location = removeMatch[2] || null;
@@ -2430,16 +2798,52 @@
                 const itemName = normalizeItemName(analyzeMatch[1]);
                 const items = getInventory().filter(i => i.name.toLowerCase() === itemName);
                 if (items.length === 0) return { message: `ERROR: ${itemName} not found in registry.` };
-
-                const details = items.map(i => {
-                    const expiring = getExpiringItems().find(e => e.id === i.id);
-                    return `${i.name.toUpperCase()}:\n• Location: ${i.location.toUpperCase()}\n• Quantity: ${i.quantity} ${i.unit || 'unit'}(s)\n• Category: ${i.category.toUpperCase()}\n• Degradation timeline: ${i.shelfLife} days\n• Time until degradation: ${expiring.daysLeft} days\n• Added: ${new Date(i.addedDate).toLocaleDateString()}`;
-                }).join('\n\n');
-
-                return { message: `ASSET ANALYSIS:\n\n${details}` };
+                if (items.length > 1) {
+                    showPendingQuestions([buildItemSelectionQuestion(items)], answers => {
+                        const selected = items.find(item => String(item.id) === String(answers[0]));
+                        performPoweredAnalysis(selected).then(response => {
+                            if (response?.message) addMessage(response.message, response.error ? 'error' : 'powered');
+                        });
+                    }, { title: 'SELECT ASSET BATCH TO ANALYZE:', summary: `${itemName} has multiple received dates.` });
+                    return { type: 'pending' };
+                }
+                return await performPoweredAnalysis(items[0]);
             }
 
             return null;
+        }
+
+        async function performPoweredAnalysis(item) {
+            const current = getExpiringItems().find(candidate => String(candidate.id) === String(item.id));
+            const localDetails = `${item.name.toUpperCase()}: ${item.shelfLife}-day timeline, ${current.daysLeft} day(s) remaining, stored ${new Date(item.addedDate).toLocaleString()} in ${item.location}.`;
+            try {
+                const payload = await callAI(`WEB-SUPPORTED ASSET ANALYSIS: Review the likely safe degradation or shelf-life timeline for "${item.name}" stored in ${item.location}. Current registry timeline is ${item.shelfLife} days. The item was added on ${item.addedDate}. Use current web results when available and summarize the basis concisely. If ${item.shelfLife} days is likely wrong, return exactly one modify_item action with name "${item.name}" and only shelfLife set to the corrected total days. Never return or change addedDate, quantity, or location. If the timeline is reasonable, return no actions.` , { apply: false });
+                const correction = payload.actions.find(action => action.type === 'modify_item' && Number(action.shelfLife) > 0);
+                if (!correction || Number(correction.shelfLife) === Number(item.shelfLife)) return { message: `ANALYSIS COMPLETE:\n${localDetails}\n${payload.message}` };
+                const proposedShelfLife = Number(correction.shelfLife);
+                const projectedDaysLeft = Math.ceil(((new Date(item.addedDate).getTime() + proposedShelfLife * MS_PER_DAY) - getDeviceNow()) / MS_PER_DAY);
+                const originalAddedDate = item.addedDate;
+                const summary = [
+                    payload.message,
+                    `Current timeline: ${item.shelfLife} days (${current.daysLeft} remaining).`,
+                    `Proposed timeline: ${proposedShelfLife} days (${projectedDaysLeft} remaining).`,
+                    `Stored date remains ${new Date(originalAddedDate).toLocaleString()}.`
+                ].join('\n');
+                showFinalConfirmation(summary, () => {
+                    const inventory = getInventory();
+                    const target = inventory.find(candidate => String(candidate.id) === String(item.id));
+                    if (!target) { addMessage(`${item.name} is no longer in the registry.`, 'error'); return; }
+                    target.shelfLife = proposedShelfLife;
+                    target.addedDate = originalAddedDate;
+                    target.lastModified = getDeviceNow().toISOString();
+                    saveInventory(inventory);
+                    const updated = getExpiringItems().find(candidate => String(candidate.id) === String(item.id));
+                    addMessage(`${target.name}: ${target.shelfLife}-day timeline, ${updated.daysLeft} day(s) remaining. Stored date unchanged.`, 'assistant');
+                }, `Analysis correction cancelled. ${item.name} remains unchanged.`);
+                return { type: 'pending' };
+            } catch (error) {
+                return { message: `${localDetails}\nWeb-supported analysis unavailable: ${error.message}`, error: true };
+            }
         }
 
 
@@ -2472,7 +2876,7 @@
             if (!Array.isArray(payload.actions)) payload.actions = [];
             payload.actions.forEach((action, index) => {
                 if (!action || typeof action !== 'object') throw new Error(`Action ${index + 1} malformed.`);
-                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
+                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view', 'update_settings'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
                 if (['add_item', 'consume_item', 'modify_item', 'remove_item'].includes(action.type) && !action.name) throw new Error(`Action ${index + 1} missing name.`);
             });
             return payload;
@@ -2483,7 +2887,7 @@
             const location = action.location || null;
             const itemId = action.itemId || null;
             if (action.type === 'add_item') {
-                return addItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, action.shelfLife ? Number(action.shelfLife) : null, action.category || null).message;
+                return addItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, action.shelfLife ? Number(action.shelfLife) : null, action.category || null, action.unit, action.note, action.addedDate).message;
             }
             if (action.type === 'consume_item') {
                 const result = useItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, itemId);
@@ -2504,6 +2908,11 @@
                 return `Modified ${target.name}. Original added date preserved unless explicitly changed.`;
             }
             if (action.type === 'remove_item') {
+                if (action.quantity !== undefined) {
+                    const result = useItem(action.name, Number.isFinite(quantity) && quantity > 0 ? quantity : 1, location, itemId);
+                    if (result.error) throw new Error(result.error);
+                    return result.message;
+                }
                 const items = getInventory();
                 const remaining = itemId ? items.filter(item => String(item.id) !== String(itemId)) : items.filter(item => !(item.name.toLowerCase() === action.name.toLowerCase() && (!location || item.location === location)));
                 if (remaining.length === items.length) throw new Error(`ERROR: ${action.name} not found in registry.`);
@@ -2519,16 +2928,38 @@
                 setInventoryView(action.view || {});
                 return 'Display parameters updated from AI action.';
             }
+            if (action.type === 'update_settings') {
+                const settings = action.settings || {};
+                if (settings.fallbackLocation !== undefined) {
+                    if (!['fridge', 'freezer', 'cupboard'].includes(settings.fallbackLocation)) throw new Error('Unknown-item location rejected.');
+                    document.getElementById('fallbackLocation').value = settings.fallbackLocation;
+                    localStorage.setItem(FALLBACK_LOCATION_KEY, settings.fallbackLocation);
+                }
+                if (settings.matchingPriority !== undefined) {
+                    if (!['exact_first', 'tags_first'].includes(settings.matchingPriority)) throw new Error('Matching priority rejected.');
+                    document.getElementById('matchingPriority').value = settings.matchingPriority;
+                    localStorage.setItem(MATCHING_PRIORITY_KEY, settings.matchingPriority);
+                }
+                const speech = getSpeechSettings();
+                if (typeof settings.speechEnabled === 'boolean') speech.enabled = settings.speechEnabled;
+                if (settings.speechRate !== undefined) speech.rate = Math.min(1.5, Math.max(0.6, Number(settings.speechRate)));
+                if (settings.speechVolume !== undefined) speech.volume = Math.min(1, Math.max(0, Number(settings.speechVolume)));
+                localStorage.setItem(SPEECH_SETTINGS_KEY, JSON.stringify(speech));
+                initializeSpeechSynthesis();
+                return 'Application settings updated.';
+            }
             return 'No operation executed.';
         }
 
         function getActionConfirmationReasons(action) {
-            if (!['consume_item', 'modify_item', 'remove_item', 'clear_inventory'].includes(action.type)) return [];
+            if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'update_settings'].includes(action.type)) return [];
             const matches = action.name ? getMatchingItems(action.name, action.location || null) : [];
             const quantity = Number(action.quantity ?? 1);
             const reasons = ['AI registry mutations require explicit confirmation'];
+            if (action.type === 'add_item') reasons.push('AI parsed the item name and addition parameters');
             if (action.type === 'clear_inventory') reasons.push('operation would delete the entire registry');
             if (action.type === 'remove_item') reasons.push('operation would delete an item');
+            if (action.type === 'update_settings') reasons.push('operation would change application settings');
             if (action.type === 'consume_item' && matches.some(item => item.quantity === quantity)) reasons.push('operation would consume all remaining quantity');
             if (!action.location && matches.length > 1) reasons.push('operation matches multiple assets');
             if (!action.confidence || action.confidence < 0.8) reasons.push('parsing confidence is uncertain');
@@ -2536,6 +2967,39 @@
         }
 
         function applyAIResponse(payload) {
+            const addActions = payload.actions.filter(action => action.type === 'add_item');
+            if (addActions.length > 1 && addActions.length === payload.actions.length) {
+                showBatchAddConfirmation(addActions.map(action => ({
+                    item: normalizeItemName(action.name),
+                    quantity: Number(action.quantity) > 0 ? Number(action.quantity) : 1,
+                    unit: normalizeUnit(action.unit),
+                    location: action.location || null,
+                    note: action.note || '',
+                    addedDate: action.addedDate || null
+                })));
+                return '';
+            }
+            if (addActions.length === 1 && payload.actions.length === 1) {
+                const action = addActions[0];
+                const quantity = Number(action.quantity) > 0 ? Number(action.quantity) : 1;
+                const location = action.location || getAssetInfo(action.name).location || 'fridge';
+                const shelfLife = Number(action.shelfLife) > 0 ? Number(action.shelfLife) : Number(getAssetInfo(action.name).days) || 14;
+                const addedDate = action.addedDate ? new Date(action.addedDate) : getDeviceNow();
+                const summary = [
+                    `Add ${quantity} ${normalizeUnit(action.unit)}(s) of ${normalizeItemName(action.name)}.`,
+                    `Location: ${location.toUpperCase()}.`,
+                    `Stored: ${addedDate.toLocaleString()}.`,
+                    `Degradation timeline: ${shelfLife} days.`
+                ].join('\n');
+                showFinalConfirmation(summary, () => {
+                    try {
+                        addMessage(applyInventoryAction({ ...action, quantity, location, shelfLife, addedDate: addedDate.toISOString() }), 'assistant');
+                    } catch (error) {
+                        addMessage(error.message, 'error');
+                    }
+                }, `${action.name} was not added.`);
+                return '';
+            }
             const riskyActions = payload.actions.map((action, actionIndex) => ({ action, actionIndex, reasons: getActionConfirmationReasons(action) })).filter(entry => entry.reasons.length > 0);
             if (riskyActions.length > 0) {
                 const questions = [];
@@ -2604,30 +3068,44 @@
             }
 
             const aiChoice = recommendation || defaultChoice;
-            const summary = [
+            const selectionSummary = [
                 `Unfamiliar asset: ${parsed.item.toUpperCase()}. No saved preset or heuristic matched.`,
                 `Powered assessment: ${recommendation ? `${aiChoice.shelfLife} days in ${aiChoice.location.toUpperCase()} (${aiChoice.category}). ${aiMessage}` : aiMessage}`,
                 `Standard VIKI rules would default to ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()} (${defaultChoice.category}).`,
-                'Reply POWERED or CONFIRM to use my assessment, DEFAULT to use the standard fallback, or reply with a number of days to override the timeline.'
+                'Choose POWERED, DEFAULT, or enter a custom number of days. Reply CANCEL to stop.'
             ].join('\n');
-
-            showConfirmationPanel({
-                title: 'UNFAMILIAR ASSET REVIEW:',
-                summary,
-                messageType: 'powered',
-                questions: [{ type: 'select', options: [
-                    { value: 'ai', label: `POWERED (${aiChoice.shelfLife} DAYS)` },
-                    { value: 'default', label: `DEFAULT (${defaultChoice.shelfLife} DAYS)` }
-                ]}],
-                cancelMessage: `${parsed.item} was not added.`
-            }, (answers, rawReply) => {
-                const customDays = Number.parseFloat(rawReply);
-                const selected = answers[0] === 'default' ? defaultChoice : aiChoice;
-                const shelfLife = Number.isFinite(customDays) && customDays > 0 ? customDays : selected.shelfLife;
-                const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note);
-                const source = Number.isFinite(customDays) && customDays > 0 ? 'Operator override' : (answers[0] === 'default' ? 'Standard default' : 'Powered assessment');
-                addMessage(`${result.message} ${source}: ${shelfLife} day degradation timeline. Standard fallback was ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()}. You can change this later by specifying a new expiration timeline.`, 'assistant');
-            });
+            pendingQuestions = {
+                questions: [],
+                cancelMessage: `${parsed.item} was not added.`,
+                handleReply(reply) {
+                    const normalized = reply.trim().toLowerCase();
+                    const customDays = Number.parseFloat(normalized);
+                    let selected;
+                    let shelfLife;
+                    let source;
+                    if (/^(?:powered|ai)$/i.test(normalized)) {
+                        selected = aiChoice; shelfLife = aiChoice.shelfLife; source = 'Powered assessment';
+                    } else if (/^default$/i.test(normalized)) {
+                        selected = defaultChoice; shelfLife = defaultChoice.shelfLife; source = 'Standard default';
+                    } else if (Number.isFinite(customDays) && customDays > 0) {
+                        selected = aiChoice; shelfLife = customDays; source = 'Operator override';
+                    } else {
+                        addMessage(`${selectionSummary}\n\nEnter POWERED, DEFAULT, a number of days, or CANCEL.`, 'powered');
+                        return;
+                    }
+                    pendingQuestions = null;
+                    const finalSummary = [
+                        `Add ${parsed.quantity || 1} ${parsed.unit || 'unit'}(s) of ${parsed.item}.`,
+                        `Location: ${selected.location.toUpperCase()}.`,
+                        `Degradation timeline: ${shelfLife} days (${source}).`
+                    ].join('\n');
+                    showFinalConfirmation(finalSummary, () => {
+                        const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note, parsed.addedDate);
+                        addMessage(result.message, 'assistant');
+                    }, `${parsed.item} was not added.`);
+                }
+            };
+            addMessage(`UNFAMILIAR ASSET REVIEW:\n${selectionSummary}`, 'powered');
         }
 
         async function callAI(userMessage, options = {}) {
@@ -2647,11 +3125,16 @@
             if (!useLocal && !apiKey) throw new Error('API key required. Enter in configuration panel.');
 
             const inventory = getInventorySnapshot();
-            const sortingContext = `Household sorting rules JSON: ${JSON.stringify(getAssetDatabase())}. Unknown-item fallback: ${localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge'}. Infer missing quantity as 1 and infer location/category/shelf life from these rules or ordinary food-storage knowledge; do not ask for clarification when a reasonable choice exists.`;
+            const sortingContext = `Household sorting rules JSON: ${JSON.stringify(getAssetDatabase())}. Editable application settings JSON: ${JSON.stringify({ fallbackLocation: localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge', matchingPriority: localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first', ...getSpeechSettings() })}. Infer missing quantity as 1 and infer location/category/shelf life from these rules or ordinary food-storage knowledge; do not ask for clarification when a reasonable choice exists.`;
             const inventoryContext = `${inventory.length > 0 ? `Current registry JSON: ${JSON.stringify(inventory)}` : 'Registry empty.'}\n${sortingContext}`;
             const deviceContext = `Device date/time: ${getDeviceNow().toString()}. Device ISO timestamp: ${getDeviceNow().toISOString()}.`;
 
             const systemPrompt = VIKI_PERSONALITY.getSystemPrompt({ inventoryContext, deviceContext });
+            const messages = [
+                { role: 'system', content: systemPrompt },
+                ...aiConversation.slice(-AI_HISTORY_LIMIT),
+                { role: 'user', content: userMessage }
+            ];
 
             if (useLocal) {
                 const response = await fetch(OLLAMA_URL, {
@@ -2659,7 +3142,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: 'llama3.2:3b',
-                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+                        messages,
                         stream: false,
                         format: 'json'
                     })
@@ -2668,6 +3151,7 @@
                 if (!response.ok) throw new Error('Local AI connection failed');
                 const data = await response.json();
                 const payload = validateAIResponse(safeParseAIJson(data.message.content));
+                aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
 
             } else {
@@ -2676,9 +3160,14 @@
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
                     body: JSON.stringify({
                         model: model,
-                        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+                        messages,
                         max_tokens: 700,
-                        response_format: { type: 'json_object' }
+                        response_format: { type: 'json_object' },
+                        venice_parameters: {
+                            include_venice_system_prompt: false,
+                            enable_web_search: 'auto',
+                            enable_web_citations: true
+                        }
                     })
                 });
 
@@ -2689,6 +3178,7 @@
 
                 const data = await response.json();
                 const payload = validateAIResponse(safeParseAIJson(data.choices[0].message.content));
+                aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
             }
         }
@@ -2732,6 +3222,10 @@
         document.getElementById('matchingPriority').addEventListener('change', (e) => localStorage.setItem(MATCHING_PRIORITY_KEY, e.target.value));
         document.getElementById('fallbackLocation').addEventListener('change', (e) => localStorage.setItem(FALLBACK_LOCATION_KEY, e.target.value));
         document.getElementById('exportDataButton').addEventListener('click', exportData);
+        document.getElementById('exportRegistryButton').addEventListener('click', exportData);
+        document.getElementById('registryLockButton').addEventListener('click', () => setRegistryEditMode(!registryEditMode));
+        document.getElementById('saveRegistryButton').addEventListener('click', saveManualRegistry);
+        document.getElementById('saveEmailSettingsButton').addEventListener('click', saveEmailSettings);
         document.getElementById('importDataButton').addEventListener('click', () => document.getElementById('importDataInput').click());
         document.getElementById('importDataInput').addEventListener('change', (e) => importDataFromFile(e.target.files[0]));
         document.getElementById('saveRulesButton').addEventListener('click', saveSortingRules);

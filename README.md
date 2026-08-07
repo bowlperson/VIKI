@@ -47,6 +47,11 @@ Supported actions are validated before being applied:
 - `modify_item`
 - `remove_item`
 - `set_view`
+- `update_settings`
+
+VIKI receives a persistent identity system prompt and recent conversation context on every model request. Venice requests automatically enable web search and citations when the model determines that current information is needed, allowing VIKI to answer forecast, headline, and other live-information questions. Local Ollama can answer from its own knowledge but does not gain a web-search backend from VIKI.
+
+VIKI can propose changes to registry content, filters, the unknown-item fallback, matching priority, and voice settings. Registry removals, consumption, modifications, and application-setting changes are staged for explicit Operator confirmation before they execute. Browser and operating-system security boundaries remain in force: this web application cannot edit the Windows registry, arbitrary system files, or settings outside its own browser storage.
 
 If an action is rejected, VIKI displays an error and does not silently mutate unrelated inventory data.
 
@@ -54,11 +59,21 @@ If an action is rejected, VIKI displays an error and does not silently mutate un
 
 VIKI executes browser speech-recognition transcripts immediately, so voice capture does not require a separate confirmation control. Confirmations that are still appropriate for destructive or ambiguous operations happen in the conversation: reply with the requested value, `CONFIRM`, or `CANCEL`.
 
-To queue several additions, begin every comma-separated entry with `add`, for example: `add milk, add 2 bread, add eggs`. VIKI reviews the queued entries one at a time. Reply `YES` to add the current entry or `NO`/`CANCEL` to skip it and continue to the next.
+To queue several additions, use one natural list, for example: `add milk, 2 bread, and eggs`. VIKI recognizes the commas and conjunction, recalls every item on its own line, and waits without changing the registry. Reply `CONFIRM` to add the entire list, `CANCEL` to add nothing, or send a complete revised comma-separated list to adjust names or quantities. VIKI repeats a revised list for confirmation and, after adding, repeats only the final item list.
 
 New items do not require a location or quantity. Quantity defaults to one, while location, category, and shelf life are inferred from exact food rules, configurable tags, built-in food-storage heuristics, and finally the configured unknown-item location.
 
-When a new item does not match any preset, tag, or heuristic, VIKI asks the configured AI for a likely storage location, category, and shelf life before adding it. The review always displays what the non-AI fallback would have selected. Reply `AI` (or `CONFIRM`), `DEFAULT`, a custom number of days, or `CANCEL`. Local command errors are also passed to the configured AI for a corrective explanation or a validated, confirmable action; if the AI is unavailable, the original error and connection failure remain visible.
+Historical additions accept `today`, `yesterday`, and relative day phrases such as `add eggs from two days ago` or `add 3 milk. I bought it two days ago`. Purchase/storage attribution clauses are removed before the item name is normalized, so the latter stores the asset as `milk`, not `milk i bought it`. VIKI stores the derived historical timestamp and calculates degradation from that actual stored date. For example, an item with a seven-day shelf life entered as stored two days ago displays approximately five days remaining. Explicitly dated stock is kept as a separate batch from same-name stock received on another date so each batch retains the correct degradation timeline.
+
+Additions whose parsed item name contains more than one word are always routed through the configured AI before any registry change. The AI separates the name from quantity, unit, location, and date metadata, and the application presents the resulting action for `CONFIRM` or `CANCEL`. Single-word additions continue to use the offline parser. Malformed commands, validation failures, thrown processing anomalies, and other local command errors are sent with the original request to VIKI for a “Did you mean…” review; any proposed corrective action is staged until confirmation.
+
+Unit-removal phrases such as `remove 3 eggs`, `used 3 eggs`, `tossed 3 eggs`, and `threw away 3 eggs` reduce the stored quantity instead of deleting the entire item. VIKI shows the exact registry spelling, requested quantity, and projected remainder before confirmation. `Remove eggs` and `remove all eggs` mean the full stored quantity and always require confirmation. If a name does not exactly match the registry, VIKI suggests the closest spelling or asks for the exact name again; it does not change inventory until the spelling and removal are confirmed.
+
+When a new item does not match any preset, tag, or heuristic, VIKI asks the configured AI for a likely storage location, category, and shelf life before adding it. The review always displays what the non-AI fallback would have selected. Reply `POWERED`, `DEFAULT`, a custom number of days, or `CANCEL` to make the selection. Local command errors are also passed to the configured AI for a corrective explanation or a validated, confirmable action; if the AI is unavailable, the original error and connection failure remain visible.
+
+Unknown-item review uses two distinct steps. First choose `POWERED`, `DEFAULT`, or a custom number of shelf-life days. VIKI then shows the resolved name, quantity, location, and timeline and asks the separate question “Is this correct?” Reply `CONFIRM` to save it or `CANCEL` at either step to stop without changing the registry. AI-parsed additions use the same concise final review instead of exposing internal parsing details.
+
+Use `analyze ITEM` (or select an inventory card) for a web-supported shelf-life review. If current sources suggest that the stored total timeline is wrong, VIKI shows the current and proposed timelines and their calculated days remaining, then waits for confirmation. Analysis can update only `shelfLife`; it explicitly preserves `addedDate`, quantity, and location.
 
 VIKI remains the conversational identity when a request needs model-powered interpretation. During that processing the header and response label display `VIKI [POWERED]`, without presenting a separate assistant persona. Approximate commands can be resolved with a natural “Did you mean…?” question and confirmed by replying `yes`. Common variants such as `delete everything`, `remove all items`, `clear the whole inventory`, and `wipe all assets` request a full registry clear and always require confirmation before any data is removed.
 
@@ -67,6 +82,12 @@ VIKI remains the conversational identity when a request needs model-powered inte
 VIKI speaks assistant and powered responses with the browser Web Speech Synthesis API. The `VOICE ON` / `VOICE OFF` control beside the chat input immediately mutes playback and stops queued speech. Settings provide a persistent speech enable switch, installed system voice selection, rate, and volume. Available voices depend on the browser and operating system; unsupported browsers continue to display text normally.
 
 Long-press or long-click an asset quantity or degradation timer to enter a replacement value through the conversation. Keyboard users can focus either value and press Enter or Space. Quantity accepts zero or a positive decimal, while degradation timelines must be greater than zero.
+
+Select the registry lock to open the asset registry as a full-page manual editor. Editable entries retain the normal asset-card structure and provide fields for names, quantities, units, categories, locations, shelf-life days, and stored date/time. **REMOVE** marks a card for deletion, **RESTORE** reverses that choice, and **SAVE** validates and persists all edits and removals together. Future stored dates are rejected. Selecting the unlocked icon discards unsaved edits. **EXPORT** downloads the same complete JSON backup available in Settings. While the page remains open, degradation values refresh every minute and again whenever the tab becomes visible, with remaining days always derived from the stored date plus total shelf life.
+
+Every asset card displays both its days remaining and percentage of total shelf life remaining. The indicator continuously shifts from green toward orange and becomes red at 30% or less. This proportional threshold means, for example, that an item with a 180-day timeline becomes red at 54 days remaining rather than waiting for a fixed short-day warning.
+
+Settings include optional EmailJS degradation alerts. When enabled and fully configured, VIKI sends one alert per item/day for assets with fewer than four days remaining. Supply recipient addresses plus an EmailJS service ID, template ID, and public key; the template receives `to_email`, `item_name`, `quantity`, `location`, `days_left`, and `message`. EmailJS browser public keys are supported, but Twilio SendGrid secret API keys must remain on a trusted server and must not be placed in this browser application.
 
 Open **Settings** in the application header to edit the AI configuration, tag matching priority, unknown-item fallback, data tools, and preset rules in this format:
 
