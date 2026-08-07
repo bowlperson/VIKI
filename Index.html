@@ -809,7 +809,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.3.1 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.3.2 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -2255,8 +2255,10 @@
         }
 
         function extractAddedDatePhrase(text) {
-            const relativePattern = /\s+(?:from\s+)?(today|yesterday|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?\s+ago)(?=\s+(?:to|in)\s+(?:the\s+)?(?:fridge|freezer|cupboard)\b|\s+(?:with|note|notes?)\b|[.!?]*$)/i;
-            const match = text.match(relativePattern);
+            const relativeDate = '(today|yesterday|(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten)\\s+days?\\s+ago)';
+            const attributionPattern = new RegExp(`(?:\\s*[,.;]\\s*|\\s+)(?:(?:which|that)\\s+)?(?:i\\s+)?(?:bought|purchased|got|received|stored)(?:\\s+it)?\\s+(?:from\\s+)?${relativeDate}(?=\\s+(?:to|in)\\s+(?:the\\s+)?(?:fridge|freezer|cupboard)\\b|\\s+(?:with|note|notes?)\\b|[.!?]*$)`, 'i');
+            const bareRelativePattern = new RegExp(`\\s+(?:from\\s+)?${relativeDate}(?=\\s+(?:to|in)\\s+(?:the\\s+)?(?:fridge|freezer|cupboard)\\b|\\s+(?:with|note|notes?)\\b|[.!?]*$)`, 'i');
+            const match = text.match(attributionPattern) || text.match(bareRelativePattern);
             if (!match) return { text, addedDate: null };
             const phrase = match[1].toLowerCase();
             let daysAgo = 0;
