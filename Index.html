@@ -809,7 +809,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.3.2 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.4.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -2212,14 +2212,14 @@
             showTyping(true);
 
             const localResponse = await handleLocalCommand(text);
-            if (localResponse) {
+            if (localResponse && localResponse.type !== 'powered_parse') {
                 if (localResponse.type === 'pending') {
                     showTyping(false);
                     return;
                 }
                 if (localResponse.error) {
                     try {
-                        const response = await callAI(`The request "${text}" did not match a local command because: "${localResponse.message}". Continue naturally as VIKI. If there is a likely intended command, ask "Did you mean ...?" and return the corresponding action so a simple yes can confirm it. Do not expose internal routing or mention AI assistance.`);
+                        const response = await callAI(`OPERATOR REQUEST REVIEW: The request "${text}" produced this application error: "${localResponse.message}". Review both messages and determine the most likely correction. Your message must begin "Did you mean" and briefly state the corrected interpretation or explain what must change. Return the corresponding action when the correction is executable. The application will require CONFIRM or CANCEL before applying it. Never claim the correction already happened.`);
                         showTyping(false);
                         if (response) addMessage(response, 'powered');
                     } catch (error) {
@@ -2326,6 +2326,10 @@
         function parseBatchRevision(text) {
             const prefixed = /^(?:add|added|bought|got|purchased|received|stored)\s+/i.test(text.trim()) ? text.trim() : `add ${text.trim()}`;
             return parseBatchAddCommands(prefixed);
+        }
+
+        function requiresPoweredAdditionParsing(entries) {
+            return entries.some(entry => entry.item.trim().split(/\s+/).length > 1);
         }
 
         function showBatchAddConfirmation(entries) {
@@ -2437,6 +2441,7 @@
 
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
+                if (requiresPoweredAdditionParsing(batchAdds)) return { type: 'powered_parse' };
                 showBatchAddConfirmation(batchAdds);
                 return { type: 'pending' };
             }
@@ -2488,6 +2493,7 @@
             const addParsed = parseInventoryPhrase(text, 'add');
             if (addParsed) {
                 const item = addParsed.item;
+                if (requiresPoweredAdditionParsing([addParsed])) return { type: 'powered_parse' };
                 const assetInfo = getAssetInfo(item);
                 if (assetInfo.inferred) {
                     await recommendUnknownItem(addParsed, assetInfo);
@@ -2815,10 +2821,11 @@
         }
 
         function getActionConfirmationReasons(action) {
-            if (!['consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'update_settings'].includes(action.type)) return [];
+            if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'update_settings'].includes(action.type)) return [];
             const matches = action.name ? getMatchingItems(action.name, action.location || null) : [];
             const quantity = Number(action.quantity ?? 1);
             const reasons = ['AI registry mutations require explicit confirmation'];
+            if (action.type === 'add_item') reasons.push('AI parsed the item name and addition parameters');
             if (action.type === 'clear_inventory') reasons.push('operation would delete the entire registry');
             if (action.type === 'remove_item') reasons.push('operation would delete an item');
             if (action.type === 'update_settings') reasons.push('operation would change application settings');
