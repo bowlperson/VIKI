@@ -161,6 +161,22 @@
             letter-spacing: 1px;
         }
 
+        .registry-title-button {
+            appearance: none;
+            background: transparent;
+            border: 0;
+            cursor: pointer;
+            font-family: inherit;
+            padding: 6px 0;
+            text-align: left;
+        }
+
+        .registry-title-button:hover, .registry-title-button:focus-visible {
+            color: var(--accent-amber);
+            outline: 1px dashed var(--accent-cyan);
+            outline-offset: 4px;
+        }
+
         .sidebar-title::before {
             content: '[ ';
         }
@@ -733,6 +749,24 @@
         .voice-status.denied,
         .voice-status.unsupported { color: var(--accent-red); }
 
+        body.voice-activated::after {
+            content: 'VOICE CHANNEL OPEN';
+            position: fixed;
+            inset: 0;
+            z-index: 850;
+            display: grid;
+            place-items: center;
+            color: var(--accent-cyan);
+            background: rgba(0, 212, 170, 0.08);
+            border: 3px solid var(--accent-cyan);
+            font-size: clamp(1rem, 5vw, 2rem);
+            letter-spacing: 0.2em;
+            pointer-events: none;
+            animation: voice-flash 0.65s ease-out forwards;
+        }
+
+        @keyframes voice-flash { from { opacity: 1; } to { opacity: 0; } }
+
         .typing-indicator {
             display: none;
             padding: 8px 16px;
@@ -813,6 +847,34 @@
         .favorite-button { border: 0; background: transparent; color: var(--accent-dim); cursor: pointer; font-family: inherit; font-size: 1rem; line-height: 1; padding: 2px 5px; text-shadow: 0 0 5px currentColor; }
         .favorite-button.active { color: var(--accent-red); }
 
+        .reminder-filter-panel { padding: 8px; }
+        .reminder-card { display: grid; gap: 10px; }
+        .reminder-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .reminder-card textarea { min-height: 72px; resize: vertical; }
+        .reminder-card-actions { display: flex; justify-content: flex-end; }
+        .reminder-status { color: var(--accent-amber); font-size: 0.7rem; }
+
+        @media (max-width: 780px) {
+            body { min-height: 100dvh; height: 100dvh; }
+            .header { align-items: flex-start; gap: 8px; padding: 8px; }
+            .header-left { min-width: 0; }
+            .subtitle { display: none; }
+            .system-status { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+            .header-button { padding: 8px; }
+            .container { flex-direction: column; overflow-y: auto; }
+            .sidebar { width: 100%; min-height: 44%; border-right: 0; border-bottom: 1px solid var(--border-color); }
+            .main-content { min-height: 52%; }
+            .inventory-list { min-height: 180px; }
+            .input-area { padding: 8px; }
+            .input-line { flex-wrap: wrap; }
+            #messageInput { flex-basis: calc(100% - 24px); }
+            .send-btn, .mic-btn, .mute-btn { min-height: 40px; flex: 1; }
+            .registry-editor-header, .registry-editor-meta, .registry-editor-timeline,
+            .reminder-card-grid { grid-template-columns: 1fr; }
+            .settings-header { flex-direction: column; }
+            .settings-header .header-button { width: 100%; }
+        }
+
     </style>
 </head>
 <body>
@@ -823,7 +885,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.7.2 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -846,7 +908,7 @@
     <div class="container">
         <div class="sidebar">
             <div class="sidebar-header">
-                <div class="sidebar-title">ASSET_REGISTRY</div>
+                <button type="button" class="sidebar-title registry-title-button" id="registryTitleButton" aria-label="Switch to reminder registry" title="Switch between assets and reminders">ASSET_REGISTRY</button>
                 <div class="registry-actions">
                     <div class="item-count" id="itemCount">0 assets</div>
                     <button type="button" class="config-button" id="registryLockButton" aria-pressed="false" title="Unlock manual registry editing">🔒</button>
@@ -913,6 +975,14 @@
                     </select>
                 </div>
                 </div>
+            </div>
+            <div class="filter-content reminder-filter-panel" id="reminderFilterContent" hidden>
+                <label class="config-label" for="reminderRecipientFilter">FILTER BY RECIPIENT</label>
+                <select class="inventory-control" id="reminderRecipientFilter">
+                    <option value="all">ALL</option>
+                    <option value="abel">ABEL</option>
+                    <option value="anna">ANNA</option>
+                </select>
             </div>
             <div class="inventory-list" id="inventoryList">
                 <div class="empty-state">
@@ -1011,6 +1081,23 @@
                     </div>
                     <div class="config-help" id="speechSupportNote">Uses voices installed in this browser or operating system.</div>
                 </section>
+                <section class="settings-section">
+                    <div class="config-title">// WAKE WORD</div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="wakeWordEnabled">
+                        <label class="toggle-label" for="wakeWordEnabled">ENABLE HANDS-FREE WAKE WORD</label>
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="wakeWordName">WAKE_WORD</label>
+                        <input class="config-input" id="wakeWordName" type="text" value="VIKI" placeholder="VIKI">
+                    </div>
+                    <div class="config-row">
+                        <label class="config-label" for="voiceSilenceSeconds">SILENCE_TIMEOUT_SECONDS</label>
+                        <input class="config-input" id="voiceSilenceSeconds" type="number" min="1" max="30" step="1" value="4">
+                    </div>
+                    <div class="config-help">Default “VIKI” is pronounced “Vicky”. Say the wake word followed by a command, or pause and speak after the signal. The microphone pauses after the selected silence period; hands-free mode resumes wake-word monitoring automatically where browser support permits.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="saveWakeWordSettingsButton">SAVE_WAKE_WORD</button></div>
+                </section>
                 <section class="settings-section rules-section">
                     <div class="config-title">// TAGS &amp; PRESET INFO</div>
                     <div class="logic-note">Each preset controls the canonical food name, searchable tags, category, storage location, and shelf-life days used for automatic additions.</div>
@@ -1095,6 +1182,7 @@
         const FALLBACK_LOCATION_KEY = 'viki_fallback_location';
         const MATCHING_PRIORITY_KEY = 'viki_matching_priority';
         const SPEECH_SETTINGS_KEY = 'viki_speech_settings';
+        const WAKE_WORD_SETTINGS_KEY = 'viki_wake_word_settings';
         const EMAIL_SETTINGS_KEY = 'viki_email_settings';
         const EMAIL_ALERT_LEDGER_KEY = 'viki_email_alert_ledger';
         const REMINDER_EMAIL_SETTINGS_KEY = 'viki_reminder_email_settings';
@@ -1137,6 +1225,10 @@
         let poweredMode = false;
         let speechMuted = false;
         let registryEditMode = false;
+        let registryView = 'assets';
+        let voiceSilenceTimer = null;
+        let wakeWordArmed = false;
+        let recognitionRestartTimer = null;
         let deferredInstallPrompt = null;
         let commandSequence = 0;
         let availableSpeechVoices = [];
@@ -1257,6 +1349,7 @@
             document.getElementById('matchingPriority').value = localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first';
             loadEmailSettings();
             loadReminderEmailSettings();
+            loadWakeWordSettings();
 
             initializeFilterTabs();
             loadAssetDatabase();
@@ -1272,7 +1365,10 @@
             setInterval(updateDeviceDateTime, 1000);
             setInterval(refreshDegradationState, 60 * 1000);
             setInterval(checkDueReminders, 60 * 1000);
-            document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDegradationState(); });
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) { refreshDegradationState(); scheduleWakeWordListening(); }
+                else if (isListening && getWakeWordSettings().enabled) recognition.stop();
+            });
             initializePWA();
         });
 
@@ -2082,6 +2178,7 @@
         }
 
         function renderInventory() {
+            if (registryView === 'reminders') { renderReminderRegistry(); return; }
             const list = document.getElementById('inventoryList');
             let items = getVisibleInventoryItems();
             const countEl = document.getElementById('itemCount');
@@ -2212,6 +2309,116 @@
                 inventoryItem.append(itemHeader, meta, timer);
                 list.appendChild(inventoryItem);
             });
+        }
+
+        function setRegistryView(view) {
+            registryView = view === 'reminders' ? 'reminders' : 'assets';
+            if (registryEditMode) setRegistryEditMode(false);
+            const reminders = registryView === 'reminders';
+            const title = document.getElementById('registryTitleButton');
+            title.textContent = reminders ? 'REMINDER_REGISTRY' : 'ASSET_REGISTRY';
+            title.setAttribute('aria-label', reminders ? 'Switch to asset registry' : 'Switch to reminder registry');
+            document.getElementById('filterCollapseButton').hidden = reminders;
+            document.getElementById('filterContent').hidden = reminders;
+            document.getElementById('reminderFilterContent').hidden = !reminders;
+            document.getElementById('registryLockButton').hidden = reminders;
+            document.getElementById('saveRegistryButton').hidden = reminders;
+            document.getElementById('exportRegistryButton').classList.toggle('registry-edit-action', !reminders);
+            renderInventory();
+        }
+
+        function reminderMatchesRecipientFilter(reminder, filter) {
+            if (filter === 'all') return true;
+            const settings = getReminderEmailSettings();
+            const target = filter === 'abel' ? settings.abelEmail : settings.annaEmail;
+            return Boolean(target) && reminder.recipients.some(email => email.toLowerCase() === target.toLowerCase());
+        }
+
+        function renderReminderRegistry() {
+            const list = document.getElementById('inventoryList');
+            const filter = document.getElementById('reminderRecipientFilter').value;
+            const reminders = getReminders().filter(reminder => reminderMatchesRecipientFilter(reminder, filter));
+            document.getElementById('itemCount').textContent = `${reminders.length} reminder(s)`;
+            list.replaceChildren();
+            if (!reminders.length) {
+                const empty = document.createElement('div');
+                empty.className = 'empty-state';
+                empty.innerHTML = '<div class="empty-state-icon">◇</div><div>No reminders detected</div><div style="font-size:0.75rem;margin-top:8px">Use “Add Reminder” to schedule one</div>';
+                list.appendChild(empty);
+                return;
+            }
+            reminders.sort((a, b) => new Date(a.reminder_datetime) - new Date(b.reminder_datetime)).forEach(reminder => {
+                const card = document.createElement('article');
+                card.className = 'inventory-item reminder-card';
+                card.dataset.reminderId = reminder.id;
+                const field = (labelText, name, type, value) => {
+                    const label = document.createElement('label');
+                    label.className = 'registry-edit-field';
+                    label.textContent = labelText;
+                    const input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+                    input.className = 'registry-field';
+                    input.dataset.field = name;
+                    if (type !== 'textarea') input.type = type;
+                    input.value = value;
+                    label.appendChild(input);
+                    return label;
+                };
+                const grid = document.createElement('div');
+                grid.className = 'reminder-card-grid';
+                grid.append(
+                    field('SUBJECT', 'subject', 'text', reminder.subject),
+                    field('RECIPIENT EMAIL(S)', 'recipients', 'text', reminder.recipients.join(', ')),
+                    field('REMINDER SEND TIME', 'reminder_datetime', 'datetime-local', formatDateTimeLocal(reminder.reminder_datetime)),
+                    field('EVENT / DEADLINE TIME', 'event_datetime', 'datetime-local', formatDateTimeLocal(reminder.event_datetime))
+                );
+                const status = document.createElement('div');
+                status.className = 'reminder-status';
+                status.textContent = `STATUS: ${String(reminder.status || 'pending').toUpperCase()}`;
+                const actions = document.createElement('div');
+                actions.className = 'reminder-card-actions';
+                const save = document.createElement('button');
+                save.className = 'config-button'; save.type = 'button'; save.textContent = 'SAVE_REMINDER';
+                save.addEventListener('click', () => saveReminderCard(card));
+                const remove = document.createElement('button');
+                remove.className = 'config-button registry-remove'; remove.type = 'button'; remove.textContent = 'DELETE';
+                remove.addEventListener('click', () => deleteReminder(reminder.id));
+                actions.append(save, remove);
+                card.append(grid, field('NOTES / EMAIL BODY', 'body', 'textarea', reminder.body || ''), status, actions);
+                list.appendChild(card);
+            });
+        }
+
+        function parseRecipientField(value) {
+            return [...new Set(value.split(/[;,\n]+/).map(email => email.trim()).filter(Boolean))];
+        }
+
+        function saveReminderCard(card) {
+            const reminder = getReminders().find(entry => String(entry.id) === card.dataset.reminderId);
+            if (!reminder) return;
+            const value = name => card.querySelector(`[data-field="${name}"]`).value.trim();
+            const recipients = parseRecipientField(value('recipients'));
+            const sendAt = new Date(value('reminder_datetime'));
+            const eventAt = new Date(value('event_datetime'));
+            if (!value('subject') || !recipients.length || recipients.some(email => !isValidEmail(email)) || Number.isNaN(sendAt.getTime()) || Number.isNaN(eventAt.getTime())) {
+                addMessage('Reminder save rejected. A subject, valid recipient email(s), reminder time, and event time are required.', 'error');
+                return;
+            }
+            const sendChanged = reminder.reminder_datetime !== sendAt.toISOString();
+            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), event_datetime: eventAt.toISOString() });
+            if (sendChanged && sendAt > getDeviceNow()) { reminder.status = 'pending'; reminder.sent_at = null; }
+            queueRemoteSave();
+            renderReminderRegistry();
+            addMessage(`Reminder updated: ${reminder.subject}.`, 'system');
+            checkDueReminders();
+        }
+
+        function deleteReminder(id) {
+            const reminder = getReminders().find(entry => String(entry.id) === String(id));
+            if (!reminder || !window.confirm(`Delete reminder “${reminder.subject}”?`)) return;
+            databaseState.reminders = getReminders().filter(entry => String(entry.id) !== String(id));
+            queueRemoteSave();
+            renderReminderRegistry();
+            addMessage(`Reminder deleted: ${reminder.subject}.`, 'system');
         }
 
         function getDegradationVisual(item) {
@@ -2422,6 +2629,71 @@
 
         // --- VOICE INPUT ---
 
+        function getWakeWordSettings() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(WAKE_WORD_SETTINGS_KEY) || '{}');
+                return { enabled: false, name: 'VIKI', silenceSeconds: 4, ...stored };
+            } catch (error) { return { enabled: false, name: 'VIKI', silenceSeconds: 4 }; }
+        }
+
+        function loadWakeWordSettings() {
+            const settings = getWakeWordSettings();
+            document.getElementById('wakeWordEnabled').checked = settings.enabled;
+            document.getElementById('wakeWordName').value = settings.name || 'VIKI';
+            document.getElementById('voiceSilenceSeconds').value = settings.silenceSeconds || 4;
+        }
+
+        function saveWakeWordSettings() {
+            const settings = {
+                enabled: document.getElementById('wakeWordEnabled').checked,
+                name: document.getElementById('wakeWordName').value.trim() || 'VIKI',
+                silenceSeconds: Math.max(1, Math.min(30, Number(document.getElementById('voiceSilenceSeconds').value) || 4))
+            };
+            localStorage.setItem(WAKE_WORD_SETTINGS_KEY, JSON.stringify(settings));
+            document.getElementById('voiceSilenceSeconds').value = settings.silenceSeconds;
+            wakeWordArmed = false;
+            clearTimeout(recognitionRestartTimer);
+            if (isListening) recognition.stop();
+            else if (settings.enabled) scheduleWakeWordListening(250);
+            addMessage(`Wake word ${settings.enabled ? `enabled as “${settings.name}”` : 'disabled'}. Silence timeout: ${settings.silenceSeconds} seconds.`, 'system');
+        }
+
+        function resetVoiceSilenceTimer() {
+            clearTimeout(voiceSilenceTimer);
+            const seconds = getWakeWordSettings().silenceSeconds;
+            voiceSilenceTimer = setTimeout(() => {
+                if (isListening) recognition.stop();
+            }, seconds * 1000);
+        }
+
+        function scheduleWakeWordListening(delay = 500) {
+            clearTimeout(recognitionRestartTimer);
+            if (!getWakeWordSettings().enabled || document.hidden || !recognition || isListening || ['denied', 'processing'].includes(currentVoiceState)) return;
+            recognitionRestartTimer = setTimeout(() => {
+                try { recognition.start(); } catch (error) { /* Browser may still be closing the previous session. */ }
+            }, delay);
+        }
+
+        function signalWakeWord() {
+            document.body.classList.remove('voice-activated');
+            void document.body.offsetWidth;
+            document.body.classList.add('voice-activated');
+            setTimeout(() => document.body.classList.remove('voice-activated'), 700);
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const context = new AudioContext();
+                const oscillator = context.createOscillator();
+                const gain = context.createGain();
+                oscillator.frequency.value = 740;
+                gain.gain.setValueAtTime(0.08, context.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.12);
+                oscillator.connect(gain).connect(context.destination);
+                oscillator.start(); oscillator.stop(context.currentTime + 0.12);
+                oscillator.onended = () => context.close();
+            } catch (error) { /* The visual signal remains available when audio is blocked. */ }
+        }
+
         function setVoiceState(state, message) {
             currentVoiceState = state || 'standby';
             const micButton = document.getElementById('micButton');
@@ -2452,21 +2724,23 @@
 
             recognition = new SpeechRecognition();
             recognition.continuous = false;
-            recognition.interimResults = false;
+            recognition.interimResults = true;
             recognition.lang = navigator.language || 'en-US';
 
             recognition.onstart = () => {
                 isListening = true;
-                setVoiceState('listening', 'LISTENING');
+                setVoiceState('listening', getWakeWordSettings().enabled ? 'WAKE WORD MONITORING' : 'LISTENING');
+                resetVoiceSilenceTimer();
             };
 
             recognition.onresult = (event) => {
-                setVoiceState('processing', 'PROCESSING TRANSCRIPT');
+                resetVoiceSilenceTimer();
                 const transcript = Array.from(event.results)
                     .map(result => result[0].transcript)
                     .join(' ')
                     .trim();
-                handleVoiceTranscript(transcript);
+                const finalResult = Array.from(event.results).every(result => result.isFinal);
+                if (finalResult) processRecognizedSpeech(transcript);
             };
 
             recognition.onerror = (event) => {
@@ -2480,11 +2754,14 @@
             };
 
             recognition.onend = () => {
+                clearTimeout(voiceSilenceTimer);
                 isListening = false;
                 if (currentVoiceState !== 'denied' && currentVoiceState !== 'processing') setVoiceState('standby', 'STANDBY');
+                scheduleWakeWordListening();
             };
 
             setVoiceState('standby', 'READY');
+            scheduleWakeWordListening(750);
         }
 
         function toggleVoiceInput() {
@@ -2513,6 +2790,34 @@
             setVoiceState('processing', 'EXECUTING TRANSCRIPT');
             await sendMessage();
             setVoiceState('standby', 'READY');
+            scheduleWakeWordListening();
+        }
+
+        function processRecognizedSpeech(transcript) {
+            const settings = getWakeWordSettings();
+            if (!settings.enabled) { handleVoiceTranscript(transcript); return; }
+            const wakeNames = settings.name.toLowerCase() === 'viki' ? ['viki', 'vicky', 'vicki'] : [settings.name.toLowerCase()];
+            const lower = transcript.toLowerCase();
+            const matchedName = wakeNames.find(name => lower.includes(name));
+            if (!wakeWordArmed && !matchedName) {
+                setVoiceState('listening', 'WAKE WORD MONITORING');
+                return;
+            }
+            let command = transcript;
+            if (matchedName) {
+                const index = lower.indexOf(matchedName);
+                command = transcript.slice(index + matchedName.length).replace(/^[,.:;\s-]+/, '').trim();
+                wakeWordArmed = true;
+                signalWakeWord();
+            }
+            if (!command) {
+                setVoiceState('listening', 'AWAKE — SPEAK COMMAND');
+                resetVoiceSilenceTimer();
+                return;
+            }
+            wakeWordArmed = false;
+            if (isListening) recognition.stop();
+            handleVoiceTranscript(command);
         }
 
         // --- PENDING QUESTIONS SYSTEM ---
@@ -3748,9 +4053,12 @@
         document.getElementById('exportDataButton').addEventListener('click', exportData);
         document.getElementById('exportRegistryButton').addEventListener('click', exportData);
         document.getElementById('registryLockButton').addEventListener('click', () => setRegistryEditMode(!registryEditMode));
+        document.getElementById('registryTitleButton').addEventListener('click', () => setRegistryView(registryView === 'assets' ? 'reminders' : 'assets'));
         document.getElementById('saveRegistryButton').addEventListener('click', saveManualRegistry);
         document.getElementById('saveEmailSettingsButton').addEventListener('click', saveEmailSettings);
         document.getElementById('saveReminderEmailSettingsButton').addEventListener('click', saveReminderEmailSettings);
+        document.getElementById('saveWakeWordSettingsButton').addEventListener('click', saveWakeWordSettings);
+        document.getElementById('reminderRecipientFilter').addEventListener('change', renderReminderRegistry);
         document.getElementById('importDataButton').addEventListener('click', () => document.getElementById('importDataInput').click());
         document.getElementById('importDataInput').addEventListener('change', (e) => importDataFromFile(e.target.files[0]));
         document.getElementById('saveRulesButton').addEventListener('click', saveSortingRules);

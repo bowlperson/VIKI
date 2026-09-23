@@ -92,6 +92,8 @@ VIKI remains the conversational identity when a request needs model-powered inte
 
 VIKI speaks assistant and powered responses with the browser Web Speech Synthesis API. The `VOICE ON` / `VOICE OFF` control beside the chat input immediately mutes playback and stops queued speech. Settings provide a persistent speech enable switch, installed system voice selection, rate, and volume. Available voices depend on the browser and operating system; unsupported browsers continue to display text normally.
 
+The separate **Wake Word** settings enable hands-free speech recognition, use `VIKI` (pronounced “Vicky”) by default, and allow a custom wake name. The silence timeout defaults to four seconds and can be set from 1–30 seconds. Say the wake word followed by a command, or say the wake word alone and speak after the visual/audio signal. After the configured silence interval, the recognition session stops; while wake-word mode is enabled, VIKI resumes monitoring where the browser permits it. Microphone permission and Web Speech Recognition support are required, and mobile browsers may suspend listening when the PWA is backgrounded or the screen is locked.
+
 Submitting a new message immediately cancels current and queued speech. Responses from an older in-flight command are ignored after a newer command begins, so the newest VIKI response receives audio priority.
 
 Long-press or long-click an asset quantity or degradation timer to enter a replacement value through the conversation. Keyboard users can focus either value and press Enter or Space. Quantity accepts zero or a positive decimal, while degradation timelines must be greater than zero.
@@ -133,3 +135,5 @@ Event/deadline time: {{event_datetime}}
 ```
 
 Pending and sent reminders synchronize inside the authenticated Supabase state. Delivery checks run when VIKI loads and once per minute while the application remains open; GitHub Pages cannot execute scheduled browser JavaScript while every VIKI tab is closed. Enter `Reminders` or `List reminders` to review pending schedules.
+
+Select the **ASSET_REGISTRY** title to switch to **REMINDER_REGISTRY**. Reminder cards expose the subject, optional email body, recipients, reminder send time, and separate event/deadline time for direct editing. Each card can be saved or deleted, and the registry can be filtered to all reminders or those addressed to the configured Abel or Anna email. Select the title again to return to assets. The stacked mobile layout and installable PWA use the same registry controls.
