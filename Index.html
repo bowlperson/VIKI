@@ -888,7 +888,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.2 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.3 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -3289,9 +3289,15 @@
         }
 
         function parseReminderDateValue(value) {
-            const input = String(value || '').trim().replace(/^(?:reminder|send|event|deadline)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*/i, '').replace(/\s+at\s+/ig, ' ');
+            const input = String(value || '').trim().replace(/^(?:reminder|send|event|deadline)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*/i, '').replace(/(?:\s+at\s+|\s*@\s*)/ig, ' ');
             if (!input) return null;
             const now = getDeviceNow();
+            const timeOnly = parseLocalTimeParts(input);
+            if (timeOnly) {
+                const localDate = new Date(now);
+                localDate.setHours(timeOnly.hour, timeOnly.minute, timeOnly.second, 0);
+                return localDate;
+            }
             const numberWords = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, half: 0.5 };
             const relative = input.match(/^in\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|half)(?:\s+of\s+an?)?\s*(minute|hour|day|week)s?$/i);
             if (relative) {
@@ -3349,6 +3355,12 @@
             return reminderDate && eventDate ? { reminderDate, eventDate } : null;
         }
 
+        function appearsToContainTwoReminderDates(input) {
+            const text = String(input || '');
+            return /(?:\||;|\n|\s\/\s|\b(?:then|and then|second)\b)/i.test(text)
+                || (/\b(?:reminder|send)\b/i.test(text) && /\b(?:event|deadline)\b/i.test(text));
+        }
+
         function validateReminderDates(reminderDate, eventDate) {
             if (!(reminderDate instanceof Date) || Number.isNaN(reminderDate.getTime()) || !(eventDate instanceof Date) || Number.isNaN(eventDate.getTime())) return 'Both reminder and event date/time values are required.';
             if (reminderDate.getTime() <= getDeviceNow().getTime()) return `The reminder send time must be in the future. VIKI read it as ${reminderDate.toLocaleString()} using this browser's local time.`;
@@ -3390,35 +3402,66 @@
             addMessage(prompt, 'assistant');
         }
 
+        function scheduleReminderDraft(draft) {
+            if (!supabaseSession?.user?.id) { addMessage('Connect to Supabase before scheduling reminders.', 'error'); return; }
+            const reminder = {
+                id: typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `reminder-${Date.now()}`,
+                subject: draft.subject,
+                body: draft.body,
+                reminder_datetime: draft.reminder_datetime,
+                event_datetime: draft.event_datetime,
+                recipients: draft.recipients,
+                status: 'pending',
+                created_at: getDeviceNow().toISOString(),
+                sent_at: null
+            };
+            databaseState.reminders = [...getReminders(), reminder];
+            queueRemoteSave();
+            addMessage(`Reminder scheduled for ${new Date(reminder.reminder_datetime).toLocaleString()}. Event/deadline: ${new Date(reminder.event_datetime).toLocaleString()}.`, 'assistant');
+        }
+
+        function confirmReminderDraft(draft) {
+            const summary = [
+                `Subject: ${draft.subject}`,
+                `Notes: ${draft.body || 'None'}`,
+                `Reminder send time: ${new Date(draft.reminder_datetime).toLocaleString()}`,
+                `Event/deadline time: ${new Date(draft.event_datetime).toLocaleString()}`,
+                `Recipients: ${draft.recipients.join(', ')}`
+            ].join('\n');
+            pendingQuestions = {
+                questions: [],
+                cancelMessage: 'Reminder creation cancelled. Nothing was scheduled.',
+                handleReply(reply) {
+                    if (/^(?:yes|confirm|confirmed|correct|proceed)$/i.test(reply.trim())) {
+                        pendingQuestions = null;
+                        scheduleReminderDraft(draft);
+                        return;
+                    }
+                    const timeChange = reply.match(/^(?:set|change|update)(?:\s+(?:the\s+)?(?:reminder|send(?:\s+time)?|it))?\s+(?:to\s+)?(.+)$/i);
+                    if (timeChange) {
+                        const revisedReminderDate = parseReminderDateValue(timeChange[1]);
+                        const eventDate = new Date(draft.event_datetime);
+                        const error = validateReminderDates(revisedReminderDate, eventDate);
+                        if (error) addMessage(error, 'error');
+                        else {
+                            draft.reminder_datetime = revisedReminderDate.toISOString();
+                            addMessage(`Reminder send time updated using browser-local time: ${revisedReminderDate.toLocaleString()}.`, 'system');
+                        }
+                        confirmReminderDraft(draft);
+                        return;
+                    }
+                    addMessage(`${summary}\n\nReply CONFIRM, CANCEL, or “set it to 5:30 PM”.`, 'assistant');
+                }
+            };
+            addMessage(`${summary}\n\nIs this correct? Reply CONFIRM, CANCEL, or “set it to 5:30 PM”.`, 'assistant');
+        }
+
         function askReminderRecipient(draft) {
             setReminderReplyHandler('Who should receive this reminder: Anna, Abel, both, or a custom email address? You may enter multiple custom addresses separated by commas.', reply => {
                 const result = resolveReminderRecipients(reply);
                 if (result.error) { addMessage(result.error, 'error'); askReminderRecipient(draft); return; }
                 draft.recipients = result.recipients;
-                const summary = [
-                    `Subject: ${draft.subject}`,
-                    `Notes: ${draft.body || 'None'}`,
-                    `Reminder send time: ${new Date(draft.reminder_datetime).toLocaleString()}`,
-                    `Event/deadline time: ${new Date(draft.event_datetime).toLocaleString()}`,
-                    `Recipients: ${draft.recipients.join(', ')}`
-                ].join('\n');
-                showFinalConfirmation(summary, () => {
-                    if (!supabaseSession?.user?.id) { addMessage('Connect to Supabase before scheduling reminders.', 'error'); return; }
-                    const reminder = {
-                        id: typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `reminder-${Date.now()}`,
-                        subject: draft.subject,
-                        body: draft.body,
-                        reminder_datetime: draft.reminder_datetime,
-                        event_datetime: draft.event_datetime,
-                        recipients: draft.recipients,
-                        status: 'pending',
-                        created_at: getDeviceNow().toISOString(),
-                        sent_at: null
-                    };
-                    databaseState.reminders = [...getReminders(), reminder];
-                    queueRemoteSave();
-                    addMessage(`Reminder scheduled for ${new Date(reminder.reminder_datetime).toLocaleString()}. Event/deadline: ${new Date(reminder.event_datetime).toLocaleString()}.`, 'assistant');
-                }, 'Reminder creation cancelled. Nothing was scheduled.');
+                confirmReminderDraft(draft);
             });
         }
 
@@ -3444,7 +3487,14 @@
         function askReminderDates(draft) {
             setReminderReplyHandler('When do you need this reminder? Provide two dates and times: first the email send time, then the actual event or deadline. Example: REMINDER: October 10, 2026 at 9:00 AM | EVENT: October 10, 2026 at 2:00 PM.', async reply => {
                 let dates = parseReminderDatePair(reply);
-                if (!dates && !isLLMDisabled()) {
+                if (!dates && !appearsToContainTwoReminderDates(reply)) {
+                    const singleReminderDate = parseReminderDateValue(reply);
+                    if (singleReminderDate && singleReminderDate > getDeviceNow()) {
+                        askReminderEventDate(draft, singleReminderDate);
+                        return;
+                    }
+                }
+                if (!dates && appearsToContainTwoReminderDates(reply) && !isLLMDisabled()) {
                     try { dates = await getPoweredReminderDates(reply); }
                     catch (error) { addMessage(`Powered date review unavailable: ${error.message}`, 'error'); }
                 }
