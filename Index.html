@@ -1041,7 +1041,16 @@
                             <option value="freezer">FREEZER</option>
                         </select>
                     </div>
-                    <div class="config-help">Heuristics run after saved presets. Assets with no match use the unknown-item location.</div>
+                    <div class="config-help">Every addition searches preset names and tag keywords first. Only unmatched assets use powered inference or request shelf-life days in NO_LLM mode.</div>
+                </section>
+                <section class="settings-section">
+                    <div class="config-title">// SUPABASE DATABASE</div>
+                    <div class="config-row"><label class="config-label" for="supabaseUrl">PROJECT_URL</label><input class="config-input" id="supabaseUrl" type="url" placeholder="https://project.supabase.co"></div>
+                    <div class="config-row"><label class="config-label" for="supabaseAnonKey">ANON_KEY</label><input class="config-input" id="supabaseAnonKey" type="password" placeholder="SUPABASE_ANON_KEY"></div>
+                    <div class="config-row"><label class="config-label" for="supabaseEmail">LOGIN_EMAIL</label><input class="config-input" id="supabaseEmail" type="email" autocomplete="username" placeholder="operator@example.com"></div>
+                    <div class="config-row"><label class="config-label" for="supabasePassword">LOGIN_PASSWORD</label><input class="config-input" id="supabasePassword" type="password" autocomplete="current-password" placeholder="NOT SAVED"></div>
+                    <div class="config-help" id="supabaseStatus">Inventory, presets, and favorite rules are stored in your private Supabase row. The password is used only to sign in and is never saved.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="connectSupabaseButton">CONNECT_AND_SYNC</button><button type="button" class="config-button" id="disconnectSupabaseButton">DISCONNECT</button></div>
                 </section>
                 <section class="settings-section">
                     <div class="config-title">// DATA MANAGEMENT</div>
@@ -1072,15 +1081,14 @@
         const OLLAMA_URL = 'http://localhost:11434/api/chat';
 
         // --- DATA STORAGE ---
-        const DB_KEY = 'viki_inventory_v2';
-        const CATEGORIES_KEY = 'viki_categories';
         const FALLBACK_LOCATION_KEY = 'viki_fallback_location';
         const MATCHING_PRIORITY_KEY = 'viki_matching_priority';
         const SPEECH_SETTINGS_KEY = 'viki_speech_settings';
         const EMAIL_SETTINGS_KEY = 'viki_email_settings';
         const EMAIL_ALERT_LEDGER_KEY = 'viki_email_alert_ledger';
-        const FAVORITE_RULES_KEY = 'viki_favorite_degradation_rules';
         const NO_LLM_KEY = 'viki_no_llm';
+        const SUPABASE_CONFIG_KEY = 'viki_supabase_config';
+        const SUPABASE_SESSION_KEY = 'viki_supabase_session';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local', 'viki_no_llm'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -1106,8 +1114,7 @@
             'pasta': { days: 365, category: 'grains', location: 'cupboard' },
             'flour': { days: 180, category: 'baking', location: 'cupboard' },
             'sugar': { days: 365, category: 'baking', location: 'cupboard' },
-            'coffee': { days: 30, category: 'beverages', location: 'cupboard' },
-            'default': { days: 14, category: 'general', location: 'fridge' }
+            'coffee': { days: 30, category: 'beverages', location: 'cupboard' }
         };
 
         let currentFilter = 'all';
@@ -1123,9 +1130,101 @@
         let availableSpeechVoices = [];
         const aiConversation = [];
         const AI_HISTORY_LIMIT = 10;
+        let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {} };
+        let supabaseSession = null;
+        let syncTimer = null;
+
+        function getSupabaseConfig() {
+            try { return { url: '', anonKey: '', email: '', ...JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || '{}') }; }
+            catch (error) { return { url: '', anonKey: '', email: '' }; }
+        }
+
+        function setSupabaseStatus(message, error = false) {
+            const element = document.getElementById('supabaseStatus');
+            if (element) { element.textContent = message; element.style.color = error ? 'var(--accent-red)' : ''; }
+        }
+
+        async function supabaseRequest(path, options = {}, authenticated = true) {
+            const config = getSupabaseConfig();
+            if (!config.url || !config.anonKey) throw new Error('Enter a Supabase project URL and anon key in Settings.');
+            const token = authenticated ? supabaseSession?.access_token : config.anonKey;
+            if (authenticated && !token) throw new Error('Connect to Supabase before changing registry data.');
+            const response = await fetch(`${config.url.replace(/\/$/, '')}${path}`, {
+                ...options,
+                headers: { apikey: config.anonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(options.headers || {}) }
+            });
+            if (!response.ok) {
+                let detail = response.statusText;
+                try { const body = await response.json(); detail = body.message || body.msg || body.error_description || body.hint || detail; } catch (error) { /* response was not JSON */ }
+                throw new Error(`Supabase: ${detail}`);
+            }
+            if (response.status === 204) return null;
+            const text = await response.text();
+            return text ? JSON.parse(text) : null;
+        }
+
+        async function authenticateSupabase(password = '') {
+            const config = getSupabaseConfig();
+            const saved = JSON.parse(localStorage.getItem(SUPABASE_SESSION_KEY) || 'null');
+            if (!password && saved?.refresh_token) {
+                supabaseSession = await supabaseRequest('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: saved.refresh_token }) }, false);
+            } else {
+                if (!config.email || !password) throw new Error('Enter the Supabase login email and password.');
+                supabaseSession = await supabaseRequest('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: config.email, password }) }, false);
+            }
+            localStorage.setItem(SUPABASE_SESSION_KEY, JSON.stringify(supabaseSession));
+            return supabaseSession;
+        }
+
+        async function loadRemoteState() {
+            if (!supabaseSession?.user?.id) return false;
+            const rows = await supabaseRequest(`/rest/v1/viki_state?user_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=state`);
+            if (rows[0]?.state) databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, ...rows[0].state };
+            else await persistRemoteState();
+            setSupabaseStatus(`Connected as ${supabaseSession.user.email}. Remote registry synchronized.`);
+            return true;
+        }
+
+        async function persistRemoteState() {
+            if (!supabaseSession?.user?.id) { setSupabaseStatus('Not connected. Changes remain in memory and are not saved.', true); return; }
+            await supabaseRequest('/rest/v1/viki_state?on_conflict=user_id', {
+                method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+                body: JSON.stringify({ user_id: supabaseSession.user.id, state: databaseState, updated_at: new Date().toISOString() })
+            });
+            setSupabaseStatus(`Connected as ${supabaseSession.user.email}. All changes saved to Supabase.`);
+        }
+
+        function queueRemoteSave() {
+            clearTimeout(syncTimer);
+            syncTimer = setTimeout(() => persistRemoteState().catch(error => setSupabaseStatus(error.message, true)), 150);
+        }
+
+        async function connectSupabase() {
+            const config = {
+                url: document.getElementById('supabaseUrl').value.trim(),
+                anonKey: document.getElementById('supabaseAnonKey').value.trim(),
+                email: document.getElementById('supabaseEmail').value.trim()
+            };
+            localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(config));
+            try {
+                await authenticateSupabase(document.getElementById('supabasePassword').value);
+                document.getElementById('supabasePassword').value = '';
+                await loadRemoteState();
+                renderSortingRules(); renderInventory(); checkExpiringItems();
+                addMessage('Supabase connected. Remote data is now authoritative.', 'system');
+            } catch (error) { setSupabaseStatus(error.message, true); addMessage(error.message, 'error'); }
+        }
+
+        function disconnectSupabase() {
+            supabaseSession = null;
+            localStorage.removeItem(SUPABASE_SESSION_KEY);
+            databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {} };
+            renderInventory(); renderSortingRules();
+            setSupabaseStatus('Disconnected. Connect to load or save registry data.', true);
+        }
 
         // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const savedKey = localStorage.getItem('viki_api_key') || '';
             document.getElementById('apiKey').value = savedKey;
 
@@ -1135,6 +1234,12 @@
             const savedLocal = localStorage.getItem('viki_local');
             if (savedLocal) document.getElementById('useLocalAI').checked = savedLocal === 'true';
             document.getElementById('disableLLM').checked = localStorage.getItem(NO_LLM_KEY) === 'true';
+            const supabaseConfig = getSupabaseConfig();
+            document.getElementById('supabaseUrl').value = supabaseConfig.url;
+            document.getElementById('supabaseAnonKey').value = supabaseConfig.anonKey;
+            document.getElementById('supabaseEmail').value = supabaseConfig.email;
+            try { if (localStorage.getItem(SUPABASE_SESSION_KEY)) { await authenticateSupabase(); await loadRemoteState(); } }
+            catch (error) { localStorage.removeItem(SUPABASE_SESSION_KEY); setSupabaseStatus(`${error.message} Reconnect in Settings.`, true); }
 
             document.getElementById('fallbackLocation').value = localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge';
             document.getElementById('matchingPriority').value = localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first';
@@ -1317,9 +1422,10 @@
         }
 
         function applyImportedData(payload) {
-            localStorage.setItem(DB_KEY, JSON.stringify(payload.viki_inventory_v2));
-            localStorage.setItem(CATEGORIES_KEY, JSON.stringify(payload.viki_categories));
-            localStorage.setItem(FAVORITE_RULES_KEY, JSON.stringify(payload.favoriteRules || {}));
+            databaseState.inventory = payload.viki_inventory_v2;
+            databaseState.presets = payload.viki_categories;
+            databaseState.favoriteRules = payload.favoriteRules || {};
+            queueRemoteSave();
             MODEL_SETTINGS_KEYS.forEach(key => localStorage.removeItem(key));
             Object.entries(payload.modelSettings).forEach(([key, value]) => localStorage.setItem(key, value));
 
@@ -1376,18 +1482,16 @@
         }
 
         // Asset database management
-        function getAssetDatabase() {
-            const data = localStorage.getItem(CATEGORIES_KEY);
-            return data ? JSON.parse(data) : { ...DEFAULT_ASSETS };
-        }
+        function getAssetDatabase() { return databaseState.presets || {}; }
 
         function saveAssetDatabase(db) {
-            localStorage.setItem(CATEGORIES_KEY, JSON.stringify(db));
+            if (!supabaseSession?.user?.id) throw new Error('Connect to Supabase before saving presets.');
+            databaseState.presets = db;
+            queueRemoteSave();
         }
 
         function loadAssetDatabase() {
-            const existing = localStorage.getItem(CATEGORIES_KEY);
-            if (!existing) saveAssetDatabase(DEFAULT_ASSETS);
+            if (!databaseState.presets || Object.keys(databaseState.presets).length === 0) databaseState.presets = { ...DEFAULT_ASSETS };
         }
 
         function normalizeItemName(name) {
@@ -1413,32 +1517,23 @@
         }
 
         function getAssetInfo(name) {
-            const favoriteRules = getFavoriteRules();
-            const favoriteRule = favoriteRules[normalizeItemName(name)];
-            if (favoriteRule) return { ...favoriteRule, customFavorite: true };
-            const db = getAssetDatabase();
             const normalizedName = normalizeItemName(name);
-            const exact = db[normalizedName] || db[name.toLowerCase().trim()];
-            const tagged = Object.entries(db).find(([key, entry]) => key !== 'default'
-                && Array.isArray(entry.tags)
-                && entry.tags.some(tag => normalizedName.includes(normalizeItemName(tag))));
+            const favoriteRule = getFavoriteRules()[normalizedName];
+            if (favoriteRule) return { ...favoriteRule, customFavorite: true, presetMatched: true };
+            const entries = Object.entries(getAssetDatabase());
+            const exact = entries.find(([key]) => normalizeItemName(key) === normalizedName);
+            const tagged = entries.find(([key, entry]) => {
+                const searchable = [key, ...(Array.isArray(entry.tags) ? entry.tags : [])].map(normalizeItemName).filter(Boolean);
+                return searchable.some(keyword => normalizedName === keyword || normalizedName.includes(keyword) || keyword.includes(normalizedName));
+            });
             const tagsFirst = (localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first') === 'tags_first';
-            if (tagsFirst && tagged) return tagged[1];
-            if (exact) return exact;
-            if (!tagsFirst && tagged) return tagged[1];
-
-            const heuristics = [
-                { pattern: /(?:frozen|ice cream)/, location: 'freezer', days: 90, category: 'frozen' },
-                { pattern: /(?:milk|cream|cheese|yogurt|meat|chicken|fish|egg|lettuce|berry|berries)/, location: 'fridge', days: 7, category: 'perishable' },
-                { pattern: /(?:rice|pasta|flour|sugar|cereal|bean|can|tin|spice|coffee|tea|bread)/, location: 'cupboard', days: 180, category: 'dry goods' }
-            ].find(rule => rule.pattern.test(normalizedName));
-            if (heuristics) return heuristics;
-
-            return { ...(db.default || { days: 14, category: 'general' }), location: localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge', inferred: true };
+            const match = tagsFirst ? (tagged || exact) : (exact || tagged);
+            if (match) return { ...match[1], presetMatched: true, presetName: match[0] };
+            return { location: localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge', category: 'general', inferred: true, presetMatched: false };
         }
 
         function getFavoriteRules() {
-            return JSON.parse(localStorage.getItem(FAVORITE_RULES_KEY) || '{}');
+            return databaseState.favoriteRules || {};
         }
 
         function toggleFavoriteItem(itemId) {
@@ -1454,7 +1549,7 @@
                 if (replacement) rules[normalizeItemName(target.name)] = { days: Number(replacement.shelfLife), location: replacement.location, category: replacement.category };
                 else delete rules[normalizeItemName(target.name)];
             }
-            localStorage.setItem(FAVORITE_RULES_KEY, JSON.stringify(rules));
+            databaseState.favoriteRules = rules;
             saveInventory(items);
             addMessage(`${target.name}: custom degradation setting ${target.favorite ? 'enabled' : 'disabled'}.`, 'system');
         }
@@ -1490,7 +1585,6 @@
                     }
                     rules[name] = { days, category, location, tags: rawTags ? rawTags.split(',').map(tag => tag.trim()).filter(Boolean) : [] };
                 });
-                rules.default = { ...DEFAULT_ASSETS.default, location: document.getElementById('fallbackLocation').value };
                 saveAssetDatabase(rules);
                 localStorage.setItem(FALLBACK_LOCATION_KEY, document.getElementById('fallbackLocation').value);
                 localStorage.setItem(MATCHING_PRIORITY_KEY, document.getElementById('matchingPriority').value);
@@ -1501,13 +1595,15 @@
         }
 
         function resetSortingRules() {
-            saveAssetDatabase(DEFAULT_ASSETS);
-            localStorage.setItem(FALLBACK_LOCATION_KEY, 'fridge');
-            localStorage.setItem(MATCHING_PRIORITY_KEY, 'exact_first');
-            document.getElementById('fallbackLocation').value = 'fridge';
-            document.getElementById('matchingPriority').value = 'exact_first';
-            renderSortingRules();
-            addMessage('Sorting rules restored to VIKI presets.', 'system');
+            try {
+                saveAssetDatabase({ ...DEFAULT_ASSETS });
+                localStorage.setItem(FALLBACK_LOCATION_KEY, 'fridge');
+                localStorage.setItem(MATCHING_PRIORITY_KEY, 'exact_first');
+                document.getElementById('fallbackLocation').value = 'fridge';
+                document.getElementById('matchingPriority').value = 'exact_first';
+                renderSortingRules();
+                addMessage('Sorting rules restored to VIKI presets.', 'system');
+            } catch (error) { addMessage(error.message, 'error'); }
         }
 
         function isUsingLocalAI() {
@@ -1550,13 +1646,12 @@
 
         // --- INVENTORY FUNCTIONS ---
 
-        function getInventory() {
-            const data = localStorage.getItem(DB_KEY);
-            return data ? JSON.parse(data) : [];
-        }
+        function getInventory() { return databaseState.inventory || []; }
 
         function saveInventory(items) {
-            localStorage.setItem(DB_KEY, JSON.stringify(items));
+            if (!supabaseSession?.user?.id) throw new Error('Connect to Supabase before changing inventory.');
+            databaseState.inventory = items;
+            queueRemoteSave();
             renderInventory();
             checkExpiringItems();
         }
@@ -1567,7 +1662,8 @@
             const assetInfo = getAssetInfo(normalizedName);
 
             const finalLocation = location || assetInfo.location || 'fridge';
-            const finalShelfLife = assetInfo.customFavorite ? assetInfo.days : (customShelfLife || assetInfo.days || 14);
+            const finalShelfLife = Number(assetInfo.customFavorite ? assetInfo.days : (customShelfLife || assetInfo.days));
+            if (!Number.isFinite(finalShelfLife) || finalShelfLife <= 0) throw new Error(`No shelf-life preset exists for ${normalizedName}.`);
             const finalCategory = category || assetInfo.category || 'general';
 
             const receivedAt = addedDate ? new Date(addedDate) : getDeviceNow();
@@ -2079,7 +2175,8 @@
                 if (favorite) rules[name] = { days: Number(favorite.shelfLife), location: favorite.location, category: favorite.category };
                 else delete rules[name];
             });
-            localStorage.setItem(FAVORITE_RULES_KEY, JSON.stringify(rules));
+            databaseState.favoriteRules = rules;
+            queueRemoteSave();
             saveInventory(retainedItems);
             setRegistryEditMode(false);
             addMessage(`Manual registry changes saved.${removedIds.size ? ` Removed ${removedIds.size} item(s).` : ''}`, 'system');
@@ -2334,7 +2431,7 @@
             const answers = activePending.questions.map(q => {
                 if (q.type === 'number') {
                     const parsed = parseFloat(reply);
-                    return Number.isFinite(parsed) ? parsed : 1;
+                    return parsed;
                 }
                 const normalizedReply = reply.toLowerCase();
                 const match = q.options.find(option => normalizedReply.includes(String(option.value).toLowerCase()) || normalizedReply.includes(option.label.toLowerCase()));
@@ -2542,8 +2639,8 @@
 
         function formatBatchList(entries) {
             return entries.map(entry => {
-                const info = getAssetInfo(entry.item);
-                return `${entry.quantity || 1} ${entry.unit || 'unit'}(s) ${entry.item}${info.customFavorite ? ` — CUSTOM ${info.days}-DAY SETTING` : ''}`;
+                const info = entry.resolvedInfo || getAssetInfo(entry.item);
+                return `${entry.quantity || 1} ${entry.unit || 'unit'}(s) ${entry.item} — ${info.days || '?'} DAYS / ${(entry.location || info.location || 'unset').toUpperCase()}${info.customFavorite ? ' / CUSTOM' : ' / PRESET'}`;
             }).join('\n');
         }
 
@@ -2556,6 +2653,70 @@
             return entries.some(entry => entry.item.trim().split(/\s+/).length > 1);
         }
 
+        function saveResolvedPreset(name, info, tags = []) {
+            const normalized = normalizeItemName(name);
+            addAssetToDatabase(normalized, {
+                days: Math.round(Number(info.days)),
+                category: normalizeItemName(info.category) || 'general',
+                location: info.location || localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge',
+                tags: [...new Set([normalized, ...tags.map(normalizeItemName)].filter(Boolean))]
+            });
+            renderSortingRules();
+            return getAssetInfo(normalized);
+        }
+
+        async function getPoweredPreset(entry) {
+            const payload = await callAI(`MISSING PRESET: Determine the correct household storage location, category, and shelf life in days for "${entry.item}". Return exactly one add_item action for that item. Do not add it or ask the Operator to select a method.`, { apply: false });
+            const action = payload.actions.find(candidate => candidate.type === 'add_item');
+            const days = Number(action?.shelfLife);
+            if (!action || !Number.isFinite(days) || days <= 0 || !['fridge', 'freezer', 'cupboard'].includes(action.location)) throw new Error(`Powered preset data for ${entry.item} was invalid.`);
+            return saveResolvedPreset(entry.item, { days, location: entry.location || action.location, category: action.category || 'general' });
+        }
+
+        function askForPresetDays(entries, index, done) {
+            if (index >= entries.length) { done(); return; }
+            const entry = entries[index];
+            showPendingQuestions([{ type: 'number', placeholder: `SHELF-LIFE DAYS FOR ${entry.item.toUpperCase()}`, step: 1 }], answers => {
+                const days = Number(answers[0]);
+                if (!Number.isFinite(days) || days <= 0) { addMessage('Enter a shelf-life greater than zero days.', 'error'); askForPresetDays(entries, index, done); return; }
+                entry.resolvedInfo = saveResolvedPreset(entry.item, { days, location: entry.location || localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge', category: 'general' });
+                askForPresetDays(entries, index + 1, done);
+            }, { summary: `${entry.item.toUpperCase()} is not in Tags & Preset Info. How many shelf-life days should VIKI save for this item?`, cancelMessage: 'Addition cancelled. No inventory items were added.' });
+        }
+
+        async function prepareBatchAddition(entries) {
+            const missing = [];
+            entries.forEach(entry => {
+                const info = getAssetInfo(entry.item);
+                if (info.presetMatched) entry.resolvedInfo = info;
+                else missing.push(entry);
+            });
+            if (missing.length === 0) { showBatchAddConfirmation(entries); return; }
+            if (isLLMDisabled()) { askForPresetDays(missing, 0, () => showBatchAddConfirmation(entries)); return; }
+            try {
+                for (const entry of missing) entry.resolvedInfo = await getPoweredPreset(entry);
+                showBatchAddConfirmation(entries);
+            } catch (error) {
+                addMessage(`${error.message} Enter shelf-life days for the unresolved item(s).`, 'error');
+                const unresolved = missing.filter(entry => !entry.resolvedInfo);
+                askForPresetDays(unresolved, 0, () => showBatchAddConfirmation(entries));
+            }
+        }
+
+        async function resolveUnknownAddition(parsed) {
+            if (isLLMDisabled()) {
+                askForPresetDays([parsed], 0, () => showBatchAddConfirmation([parsed]));
+                return;
+            }
+            try {
+                parsed.resolvedInfo = await getPoweredPreset(parsed);
+                showBatchAddConfirmation([parsed]);
+            } catch (error) {
+                addMessage(`${error.message} Enter shelf-life days instead.`, 'error');
+                askForPresetDays([parsed], 0, () => showBatchAddConfirmation([parsed]));
+            }
+        }
+
         function showBatchAddConfirmation(entries) {
             pendingQuestions = {
                 questions: [],
@@ -2564,8 +2725,9 @@
                     if (/^(?:yes|confirm|confirmed|correct|proceed|add them)$/i.test(reply.trim())) {
                         pendingQuestions = null;
                         entries.forEach(entry => {
-                            const info = getAssetInfo(entry.item);
-                            addItem(entry.item, entry.quantity || 1, entry.location || info.location || 'fridge', Number(info.days) || 14, info.category, entry.unit, entry.note, entry.addedDate);
+                            const info = entry.resolvedInfo || getAssetInfo(entry.item);
+                            if (!info.presetMatched || !Number(info.days)) throw new Error(`No saved preset exists for ${entry.item}.`);
+                            addItem(entry.item, entry.quantity || 1, entry.location || info.location, Number(info.days), info.category, entry.unit, entry.note, entry.addedDate);
                         });
                         renderInventory();
                         addMessage(formatBatchList(entries), 'assistant');
@@ -2574,7 +2736,7 @@
 
                     const revision = parseBatchRevision(reply);
                     if (revision) {
-                        showBatchAddConfirmation(revision);
+                        prepareBatchAddition(revision).catch(error => addMessage(error.message, 'error'));
                         return;
                     }
                     addMessage(`I could not read that adjustment. Send the complete revised list separated by commas.\n\n${formatBatchList(entries)}`, 'assistant');
@@ -2665,8 +2827,7 @@
 
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
-                if (!isLLMDisabled() && requiresPoweredAdditionParsing(batchAdds)) return { type: 'powered_parse' };
-                showBatchAddConfirmation(batchAdds);
+                await prepareBatchAddition(batchAdds);
                 return { type: 'pending' };
             }
 
@@ -2717,7 +2878,6 @@
             const addParsed = parseInventoryPhrase(text, 'add');
             if (addParsed) {
                 const item = addParsed.item;
-                if (!isLLMDisabled() && requiresPoweredAdditionParsing([addParsed])) return { type: 'powered_parse' };
                 const assetInfo = getAssetInfo(item);
                 if (assetInfo.customFavorite) {
                     const summary = `Add ${addParsed.quantity || 1} ${addParsed.unit || 'unit'}(s) of ${item}.\nLocation: ${(addParsed.location || assetInfo.location).toUpperCase()}.\nDegradation timeline: ${assetInfo.days} days using the favorited custom setting.`;
@@ -2728,11 +2888,7 @@
                     return { type: 'pending' };
                 }
                 if (assetInfo.inferred) {
-                    if (isLLMDisabled()) {
-                        const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, assetInfo.days, assetInfo.category, addParsed.unit, addParsed.note, addParsed.addedDate);
-                        return { message: `${result.message} NO_LLM mode used the standard ${assetInfo.days}-day fallback.` };
-                    }
-                    await recommendUnknownItem(addParsed, assetInfo);
+                    await resolveUnknownAddition(addParsed);
                     return { type: 'pending' };
                 }
                 const result = addItem(item, addParsed.quantity || 1, addParsed.location || assetInfo.location, null, null, addParsed.unit, addParsed.note, addParsed.addedDate);
@@ -3110,37 +3266,15 @@
 
         function applyAIResponse(payload) {
             const addActions = payload.actions.filter(action => action.type === 'add_item');
-            if (addActions.length > 1 && addActions.length === payload.actions.length) {
-                showBatchAddConfirmation(addActions.map(action => ({
+            if (addActions.length > 0 && addActions.length === payload.actions.length) {
+                prepareBatchAddition(addActions.map(action => ({
                     item: normalizeItemName(action.name),
                     quantity: Number(action.quantity) > 0 ? Number(action.quantity) : 1,
                     unit: normalizeUnit(action.unit),
                     location: action.location || null,
                     note: action.note || '',
                     addedDate: action.addedDate || null
-                })));
-                return '';
-            }
-            if (addActions.length === 1 && payload.actions.length === 1) {
-                const action = addActions[0];
-                const assetInfo = getAssetInfo(action.name);
-                const quantity = Number(action.quantity) > 0 ? Number(action.quantity) : 1;
-                const location = action.location || assetInfo.location || 'fridge';
-                const shelfLife = assetInfo.customFavorite ? assetInfo.days : (Number(action.shelfLife) > 0 ? Number(action.shelfLife) : Number(assetInfo.days) || 14);
-                const addedDate = action.addedDate ? new Date(action.addedDate) : getDeviceNow();
-                const summary = [
-                    `Add ${quantity} ${normalizeUnit(action.unit)}(s) of ${normalizeItemName(action.name)}.`,
-                    `Location: ${location.toUpperCase()}.`,
-                    `Stored: ${addedDate.toLocaleString()}.`,
-                    `Degradation timeline: ${shelfLife} days${assetInfo.customFavorite ? ' using the favorited custom setting' : ''}.`
-                ].join('\n');
-                showFinalConfirmation(summary, () => {
-                    try {
-                        addMessage(applyInventoryAction({ ...action, quantity, location, shelfLife, addedDate: addedDate.toISOString() }), 'assistant');
-                    } catch (error) {
-                        addMessage(error.message, 'error');
-                    }
-                }, `${action.name} was not added.`);
+                }))).catch(error => addMessage(error.message, 'error'));
                 return '';
             }
             const riskyActions = payload.actions.map((action, actionIndex) => ({ action, actionIndex, reasons: getActionConfirmationReasons(action) })).filter(entry => entry.reasons.length > 0);
@@ -3183,73 +3317,6 @@
             return [payload.message, ...results.map(result => `ACTION_LOG: ${result}`)].join('\n');
         }
 
-        async function recommendUnknownItem(parsed, defaultInfo) {
-            const defaultChoice = {
-                shelfLife: Number(defaultInfo.days) || 14,
-                location: parsed.location || defaultInfo.location || 'fridge',
-                category: defaultInfo.category || 'general'
-            };
-            let recommendation = null;
-            let aiMessage = '';
-
-            try {
-                const payload = await callAI(`UNFAMILIAR ASSET REVIEW: Determine a likely safe household storage location, category, and shelf life in days for "${parsed.item}". Consider the item name and ordinary food-storage knowledge. Return exactly one add_item action, but do not claim it has already been added.`, { apply: false });
-                const action = payload.actions.find(candidate => candidate.type === 'add_item');
-                const shelfLife = Number(action?.shelfLife);
-                if (action && Number.isFinite(shelfLife) && shelfLife > 0 && ['fridge', 'freezer', 'cupboard'].includes(action.location)) {
-                    recommendation = {
-                        shelfLife: Math.round(shelfLife),
-                        location: parsed.location || action.location,
-                        category: action.category || defaultChoice.category
-                    };
-                    aiMessage = payload.message;
-                } else {
-                    throw new Error('AI did not return a usable shelf-life recommendation.');
-                }
-            } catch (error) {
-                aiMessage = `Powered review unavailable: ${error.message}`;
-            }
-
-            const aiChoice = recommendation || defaultChoice;
-            const selectionSummary = [
-                `Unfamiliar asset: ${parsed.item.toUpperCase()}. No saved preset or heuristic matched.`,
-                `Powered assessment: ${recommendation ? `${aiChoice.shelfLife} days in ${aiChoice.location.toUpperCase()} (${aiChoice.category}). ${aiMessage}` : aiMessage}`,
-                `Standard VIKI rules would default to ${defaultChoice.shelfLife} days in ${defaultChoice.location.toUpperCase()} (${defaultChoice.category}).`,
-                'Choose POWERED, DEFAULT, or enter a custom number of days. Reply CANCEL to stop.'
-            ].join('\n');
-            pendingQuestions = {
-                questions: [],
-                cancelMessage: `${parsed.item} was not added.`,
-                handleReply(reply) {
-                    const normalized = reply.trim().toLowerCase();
-                    const customDays = Number.parseFloat(normalized);
-                    let selected;
-                    let shelfLife;
-                    let source;
-                    if (/^(?:powered|ai)$/i.test(normalized)) {
-                        selected = aiChoice; shelfLife = aiChoice.shelfLife; source = 'Powered assessment';
-                    } else if (/^default$/i.test(normalized)) {
-                        selected = defaultChoice; shelfLife = defaultChoice.shelfLife; source = 'Standard default';
-                    } else if (Number.isFinite(customDays) && customDays > 0) {
-                        selected = aiChoice; shelfLife = customDays; source = 'Operator override';
-                    } else {
-                        addMessage(`${selectionSummary}\n\nEnter POWERED, DEFAULT, a number of days, or CANCEL.`, 'powered');
-                        return;
-                    }
-                    pendingQuestions = null;
-                    const finalSummary = [
-                        `Add ${parsed.quantity || 1} ${parsed.unit || 'unit'}(s) of ${parsed.item}.`,
-                        `Location: ${selected.location.toUpperCase()}.`,
-                        `Degradation timeline: ${shelfLife} days (${source}).`
-                    ].join('\n');
-                    showFinalConfirmation(finalSummary, () => {
-                        const result = addItem(parsed.item, parsed.quantity || 1, selected.location, shelfLife, selected.category, parsed.unit, parsed.note, parsed.addedDate);
-                        addMessage(result.message, 'assistant');
-                    }, `${parsed.item} was not added.`);
-                }
-            };
-            addMessage(`UNFAMILIAR ASSET REVIEW:\n${selectionSummary}`, 'powered');
-        }
 
         async function callAI(userMessage, options = {}) {
             if (isLLMDisabled()) throw new Error('NO_LLM mode is active. Powered requests are disabled.');
@@ -3355,6 +3422,8 @@
             filterCollapseButton.setAttribute('aria-expanded', String(!expanded));
             filterContent.hidden = expanded;
         });
+        document.getElementById('connectSupabaseButton').addEventListener('click', connectSupabase);
+        document.getElementById('disconnectSupabaseButton').addEventListener('click', disconnectSupabase);
         document.getElementById('saveAISettingsButton').addEventListener('click', () => {
             localStorage.setItem('viki_api_key', getApiKey());
             localStorage.setItem('viki_model', document.getElementById('modelSelect').value);
