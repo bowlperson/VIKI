@@ -1,0 +1,10 @@
+{
+  "name": "VIKI — Virtual Inventory Keeper Intelligence",
+  "short_name": "VIKI",
+  "description": "Offline-capable household inventory and degradation tracker.",
+  "start_url": "./Index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0a0c",
+  "theme_color": "#0a0a0c"
+}
