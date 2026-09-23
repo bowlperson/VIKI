@@ -888,7 +888,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.1 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.2 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -3243,8 +3243,53 @@
             return { message: `Moved ${normalizedName} to ${destination} registry.` };
         }
 
+        function parseLocalTimeParts(value, fallbackHour = 9) {
+            const input = value == null ? '' : String(value).trim();
+            if (!input) return { hour: fallbackHour, minute: 0, second: 0 };
+            const match = input.match(/^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(am|pm)?$/i);
+            if (!match) return null;
+            let hour = Number(match[1]);
+            const minute = Number(match[2] || 0);
+            const second = Number(match[3] || 0);
+            const meridiem = (match[4] || '').toLowerCase();
+            if (minute > 59 || second > 59 || (meridiem && (hour < 1 || hour > 12)) || (!meridiem && hour > 23)) return null;
+            if (meridiem === 'am' && hour === 12) hour = 0;
+            if (meridiem === 'pm' && hour !== 12) hour += 12;
+            return { hour, minute, second };
+        }
+
+        function createBrowserLocalDate(year, month, day, timeText) {
+            const time = parseLocalTimeParts(timeText);
+            if (!time) return null;
+            const date = new Date(Number(year), Number(month) - 1, Number(day), time.hour, time.minute, time.second, 0);
+            if (date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return null;
+            return date;
+        }
+
+        function parseBrowserLocalDateTime(input) {
+            const explicitZone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(input);
+            if (explicitZone) {
+                const instant = new Date(input);
+                return Number.isNaN(instant.getTime()) ? null : instant;
+            }
+            let match = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[t\s]+(.+))?$/i);
+            if (match) return createBrowserLocalDate(match[1], match[2], match[3], match[4]);
+            match = input.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s+(.+))?$/i);
+            if (match) {
+                const year = Number(match[3]) < 100 ? 2000 + Number(match[3]) : Number(match[3]);
+                return createBrowserLocalDate(year, match[1], match[2], match[4]);
+            }
+            const months = { january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4, may: 5, june: 6, jun: 6, july: 7, jul: 7, august: 8, aug: 8, september: 9, sep: 9, sept: 9, october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12 };
+            match = input.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{4})(?:\s+(.+))?$/i);
+            if (match && months[match[1].toLowerCase()]) return createBrowserLocalDate(match[3], months[match[1].toLowerCase()], match[2], match[4]);
+            match = input.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)[,]?\s+(\d{4})(?:\s+(.+))?$/i);
+            if (match && months[match[2].toLowerCase()]) return createBrowserLocalDate(match[3], months[match[2].toLowerCase()], match[1], match[4]);
+            const parsed = new Date(input);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
         function parseReminderDateValue(value) {
-            const input = String(value || '').trim().replace(/^(?:reminder|send|event|deadline)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*/i, '').replace(/\s+at\s+/i, ' ');
+            const input = String(value || '').trim().replace(/^(?:reminder|send|event|deadline)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*/i, '').replace(/\s+at\s+/ig, ' ');
             if (!input) return null;
             const now = getDeviceNow();
             const numberWords = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, half: 0.5 };
@@ -3260,20 +3305,21 @@
                 let daysAhead = (weekdayIndex - now.getDay() + 7) % 7;
                 if (daysAhead === 0 || weekday[1]) daysAhead += daysAhead === 0 ? 7 : 0;
                 const date = new Date(now); date.setDate(date.getDate() + daysAhead);
-                const time = (weekday[3] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM');
-                const parsed = new Date(`${date.toLocaleDateString('en-US')} ${time}`);
-                return Number.isNaN(parsed.getTime()) ? null : parsed;
+                const time = parseLocalTimeParts((weekday[3] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM'));
+                if (!time) return null;
+                date.setHours(time.hour, time.minute, time.second, 0);
+                return date;
             }
             const relativeDay = input.match(/^(today|tomorrow)(?:\s+(?:at\s+)?)?(.+)?$/i);
             if (relativeDay) {
                 const date = new Date(now);
                 if (relativeDay[1].toLowerCase() === 'tomorrow') date.setDate(date.getDate() + 1);
-                const time = (relativeDay[2] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM');
-                const parsed = new Date(`${date.toLocaleDateString('en-US')} ${time}`);
-                return Number.isNaN(parsed.getTime()) ? null : parsed;
+                const time = parseLocalTimeParts((relativeDay[2] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM'));
+                if (!time) return null;
+                date.setHours(time.hour, time.minute, time.second, 0);
+                return date;
             }
-            const parsed = new Date(input);
-            return Number.isNaN(parsed.getTime()) ? null : parsed;
+            return parseBrowserLocalDateTime(input);
         }
 
         function parseReminderDatePair(input) {
@@ -3305,13 +3351,15 @@
 
         function validateReminderDates(reminderDate, eventDate) {
             if (!(reminderDate instanceof Date) || Number.isNaN(reminderDate.getTime()) || !(eventDate instanceof Date) || Number.isNaN(eventDate.getTime())) return 'Both reminder and event date/time values are required.';
-            if (reminderDate <= getDeviceNow()) return 'The reminder send time must be in the future.';
+            if (reminderDate.getTime() <= getDeviceNow().getTime()) return `The reminder send time must be in the future. VIKI read it as ${reminderDate.toLocaleString()} using this browser's local time.`;
             if (eventDate < reminderDate) return 'The event/deadline time cannot be earlier than the reminder send time.';
             return '';
         }
 
         async function getPoweredReminderDates(input) {
-            const payload = await callAI(`REMINDER DATE FORMAT REVIEW: Parse exactly two date/time values from the Operator text below using the supplied device time. The first is reminder_datetime (email send time); the second is event_datetime (actual event/deadline). Return one parse_reminder_dates action with both values as ISO timestamps. Do not rewrite any subject or notes. Operator text: ${input}`, { apply: false });
+            const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'browser local time';
+            const offsetMinutes = -getDeviceNow().getTimezoneOffset();
+            const payload = await callAI(`REMINDER DATE FORMAT REVIEW: Parse exactly two date/time values from the Operator text below using the supplied device time. Interpret any date without an explicit timezone in the browser's local timezone (${browserZone}, current UTC offset ${offsetMinutes} minutes). The first is reminder_datetime (email send time); the second is event_datetime (actual event/deadline). Return one parse_reminder_dates action with both values as ISO timestamps including the correct UTC offset. Do not rewrite any subject or notes. Operator text: ${input}`, { apply: false });
             const action = payload.actions.find(candidate => candidate.type === 'parse_reminder_dates');
             if (!action) return null;
             const reminderDate = parseReminderDateValue(action.reminder_datetime);

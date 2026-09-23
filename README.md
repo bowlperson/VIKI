@@ -124,6 +124,8 @@ REMINDER: October 10, 2026 at 9:00 AM | EVENT: October 10, 2026 at 2:00 PM
 
 Common ISO, US numeric, month-name, `today`, `tomorrow`, and relative inputs such as `in 2 hours` are handled locally. If a combined date response remains ambiguous and AI is enabled, VIKI asks the configured model only to normalize the two timestamps; subjects and notes are never rewritten. With NO_LLM enabled, VIKI asks for the send time and event time separately instead.
 
+Dates and times without an explicit timezone are constructed in the browser/device's local timezone rather than UTC. Explicit offsets such as `Z`, `-04:00`, or `+01:00` are preserved as absolute instants. The future-time validation and due-reminder check use that same browser clock, and a rejected time reports the locally interpreted value for easier correction.
+
 Configure the independent **Reminder Emails [EmailJS]** section with Abel's and Anna's reference addresses plus a reminder-specific EmailJS service ID, template ID, and public key. A reminder can target Abel, Anna, both, or one or more custom addresses entered during creation. The reminder EmailJS template should use:
 
 ```text
