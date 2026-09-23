@@ -166,9 +166,12 @@
             background: transparent;
             border: 0;
             cursor: pointer;
+            flex-shrink: 1;
             font-family: inherit;
+            min-width: 0;
             padding: 6px 0;
             text-align: left;
+            white-space: nowrap;
         }
 
         .registry-title-button:hover, .registry-title-button:focus-visible {
@@ -885,7 +888,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.0 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.1 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -2316,7 +2319,7 @@
             if (registryEditMode) setRegistryEditMode(false);
             const reminders = registryView === 'reminders';
             const title = document.getElementById('registryTitleButton');
-            title.textContent = reminders ? 'REMINDER_REGISTRY' : 'ASSET_REGISTRY';
+            title.textContent = reminders ? 'REMINDER_REG' : 'ASSET_REGISTRY';
             title.setAttribute('aria-label', reminders ? 'Switch to asset registry' : 'Switch to reminder registry');
             document.getElementById('filterCollapseButton').hidden = reminders;
             document.getElementById('filterContent').hidden = reminders;
