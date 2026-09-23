@@ -4,7 +4,16 @@ VIKI (Virtual Inventory Keeper Intelligence) is a browser-based household invent
 
 ## Run the app
 
-Open `Index.html` in a modern browser. The app stores inventory in `localStorage`, so data persists in the browser profile on the device being used.
+Serve `Index.html` in a modern browser. VIKI stores inventory, presets, and favorite degradation rules in Supabase rather than browser local storage. Browser storage contains only device-specific preferences and the Supabase connection/session details required to reconnect.
+
+## Supabase setup
+
+1. Create a Supabase project and enable Email authentication.
+2. Run [`supabase-schema.sql`](supabase-schema.sql) once in the project's SQL editor. It creates the `viki_state` table, enables Row Level Security, and restricts each state row to its authenticated owner.
+3. Create an Email user in Supabase Authentication.
+4. Open **Settings → Supabase Database** and enter the project URL, browser-safe anon key, login email, and password, then select **CONNECT_AND_SYNC**.
+
+Never put the `service_role` key in VIKI. The settings form accepts the browser-safe anon key only. The password is sent directly to Supabase for sign-in and is not persisted; the resulting refresh session is stored in the browser. No npm dependency is required because this static application uses Supabase's documented Auth and PostgREST HTTP endpoints through the browser `fetch` API.
 
 For installation and offline use, serve the repository over HTTPS (or localhost). VIKI includes a text-only web app manifest and service worker. The browser or operating system supplies its default home-screen icon so the update contains no image assets. Supporting desktop and Android browsers expose **INSTALL** when installation is available. On iPhone or iPad, select **INSTALL** for guidance and use Safari’s Share → **Add to Home Screen**. Direct `file://` use cannot register a service worker.
 
@@ -63,19 +72,17 @@ VIKI executes browser speech-recognition transcripts immediately, so voice captu
 
 To queue several additions, use one natural list, for example: `add milk, 2 bread, and eggs`. VIKI recognizes the commas and conjunction, recalls every item on its own line, and waits without changing the registry. Reply `CONFIRM` to add the entire list, `CANCEL` to add nothing, or send a complete revised comma-separated list to adjust names or quantities. VIKI repeats a revised list for confirmation and, after adding, repeats only the final item list.
 
-New items do not require a location or quantity. Quantity defaults to one, while location, category, and shelf life are inferred from exact food rules, configurable tags, built-in food-storage heuristics, and finally the configured unknown-item location.
+New items do not require a location or quantity. Quantity defaults to one. Every single-item or batch addition first searches **Tags & Preset Info** by canonical name and tag keywords, even when an LLM is enabled. Preset matches always win and do not invoke an LLM.
 
 Historical additions accept `today`, `yesterday`, and relative day phrases such as `add eggs from two days ago` or `add 3 milk. I bought it two days ago`. Purchase/storage attribution clauses are removed before the item name is normalized, so the latter stores the asset as `milk`, not `milk i bought it`. VIKI stores the derived historical timestamp and calculates degradation from that actual stored date. For example, an item with a seven-day shelf life entered as stored two days ago displays approximately five days remaining. Explicitly dated stock is kept as a separate batch from same-name stock received on another date so each batch retains the correct degradation timeline.
 
-Additions whose parsed item name contains more than one word are always routed through the configured AI before any registry change. The AI separates the name from quantity, unit, location, and date metadata, and the application presents the resulting action for `CONFIRM` or `CANCEL`. Single-word additions continue to use the offline parser. Malformed commands, validation failures, thrown processing anomalies, and other local command errors are sent with the original request to VIKI for a “Did you mean…” review; any proposed corrective action is staged until confirmation.
+Local parsing runs before powered enrichment for both single- and multi-item additions. Only items missing from Tags & Preset Info are sent for powered storage/category/shelf-life determination. Malformed commands and other local command errors can still be sent with the original request to VIKI for a “Did you mean…” review; any proposed corrective action is staged until confirmation.
 
-Enable **NO_LLM mode** in Settings during a Venice, Ollama, API, or network outage. VIKI then skips powered requests immediately: multi-word additions use the local parser, unfamiliar items use the standard fallback, and returned errors remain local rather than waiting for an unavailable service.
+Enable **NO_LLM mode** in Settings during a Venice, Ollama, API, or network outage. VIKI skips powered requests immediately. Unfamiliar items never receive a hard-coded fallback: VIKI asks the Operator for shelf-life days and saves the answer into Tags & Preset Info.
 
 Unit-removal phrases such as `remove 3 eggs`, `used 3 eggs`, `tossed 3 eggs`, and `threw away 3 eggs` reduce the stored quantity instead of deleting the entire item. VIKI shows the exact registry spelling, requested quantity, and projected remainder before confirmation. `Remove eggs` and `remove all eggs` mean the full stored quantity and always require confirmation. If a name does not exactly match the registry, VIKI suggests the closest spelling or asks for the exact name again; it does not change inventory until the spelling and removal are confirmed.
 
-When a new item does not match any preset, tag, or heuristic, VIKI asks the configured AI for a likely storage location, category, and shelf life before adding it. The review always displays what the non-AI fallback would have selected. Reply `POWERED`, `DEFAULT`, a custom number of days, or `CANCEL` to make the selection. Local command errors are also passed to the configured AI for a corrective explanation or a validated, confirmable action; if the AI is unavailable, the original error and connection failure remain visible.
-
-Unknown-item review uses two distinct steps. First choose `POWERED`, `DEFAULT`, or a custom number of shelf-life days. VIKI then shows the resolved name, quantity, location, and timeline and asks the separate question “Is this correct?” Reply `CONFIRM` to save it or `CANCEL` at either step to stop without changing the registry. AI-parsed additions use the same concise final review instead of exposing internal parsing details.
+When an item has no preset/tag match, VIKI automatically uses the configured powered service to determine its location, category, and shelf life. It saves that result as a new preset and then asks for final confirmation; there is no POWERED-versus-DEFAULT question. If powered inference is disabled or unavailable, VIKI asks how many shelf-life days to use, saves the answer as a reusable preset, and then presents the final addition review. In a batch, known items retain their presets while this process runs only for missing items.
 
 Use `analyze ITEM` (or select an inventory card) for a web-supported shelf-life review. If current sources suggest that the stored total timeline is wrong, VIKI shows the current and proposed timelines and their calculated days remaining, then waits for confirmation. Analysis can update only `shelfLife`; it explicitly preserves `addedDate`, quantity, and location.
 
@@ -93,7 +100,7 @@ Select the registry lock to open the asset registry as a full-page manual editor
 
 Every asset card displays both its days remaining and percentage of total shelf life remaining. The indicator continuously shifts from green toward orange and becomes red at 30% or less. This proportional threshold means, for example, that an item with a 180-day timeline becomes red at 54 days remaining rather than waiting for a fixed short-day warning.
 
-Each card also has a pixel-style heart. Favoriting an item saves its current shelf-life duration as that item name’s custom degradation rule. Future additions with that name always use the custom duration; VIKI skips the POWERED/DEFAULT/custom choice and asks only for final confirmation while identifying the favorited custom setting. Unfavoriting removes the saved rule when no other batch of that item remains favorited.
+Each card also has a pixel-style heart. Favoriting an item saves its current shelf-life duration as that item name’s custom degradation rule. Future additions with that name always use the custom duration and ask only for final confirmation while identifying the favorited custom setting. Unfavoriting removes the saved rule when no other batch of that item remains favorited.
 
 Settings include optional EmailJS degradation alerts. When enabled and fully configured, VIKI sends one alert per item/day for assets with fewer than four days remaining. Supply recipient addresses plus an EmailJS service ID, template ID, and public key; the template receives `to_email`, `item_name`, `quantity`, `location`, `days_left`, and `message`. EmailJS browser public keys are supported, but Twilio SendGrid secret API keys must remain on a trusted server and must not be placed in this browser application.
 
@@ -103,4 +110,26 @@ Open **Settings** in the application header to edit the AI configuration, tag ma
 food name | tag one, tag two | category | fridge | 7
 ```
 
-The matching priority can prefer exact food names or tags. Preset names, tags, categories, locations, shelf lives, matching logic, and the unknown-item default are stored locally in the browser and are included in the context sent to the configured AI.
+The matching priority can prefer exact food names or tags. Preset names, tags, categories, locations, shelf lives, inventory, and favorite rules synchronize to the authenticated Supabase state. Device-only UI and service credentials remain in browser storage.
+
+## Reminders
+
+Enter `Add Reminder` in the conversation to create an email reminder without requiring an LLM. VIKI collects the subject verbatim, optional notes verbatim, two distinct timestamps, and recipients in sequence. The first timestamp (`reminder_datetime`) controls when the email is sent; the second (`event_datetime`) identifies when the actual event or deadline occurs. Dates may be entered with explicit labels separated by a pipe, semicolon, or new line, for example:
+
+```text
+REMINDER: October 10, 2026 at 9:00 AM | EVENT: October 10, 2026 at 2:00 PM
+```
+
+Common ISO, US numeric, month-name, `today`, `tomorrow`, and relative inputs such as `in 2 hours` are handled locally. If a combined date response remains ambiguous and AI is enabled, VIKI asks the configured model only to normalize the two timestamps; subjects and notes are never rewritten. With NO_LLM enabled, VIKI asks for the send time and event time separately instead.
+
+Configure the independent **Reminder Emails [EmailJS]** section with Abel's and Anna's reference addresses plus a reminder-specific EmailJS service ID, template ID, and public key. A reminder can target Abel, Anna, both, or one or more custom addresses entered during creation. The reminder EmailJS template should use:
+
+```text
+To Email: {{to_email}}
+Subject: {{reminder_subject}}
+Body/notes: {{reminder_body}}
+Reminder send time: {{reminder_datetime}}
+Event/deadline time: {{event_datetime}}
+```
+
+Pending and sent reminders synchronize inside the authenticated Supabase state. Delivery checks run when VIKI loads and once per minute while the application remains open; GitHub Pages cannot execute scheduled browser JavaScript while every VIKI tab is closed. Enter `Reminders` or `List reminders` to review pending schedules.
