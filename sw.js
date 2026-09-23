@@ -1,4 +1,4 @@
-const CACHE_NAME = 'viki-v1.10.3';
+const CACHE_NAME = 'viki-v1.10.4';
 const APP_SHELL = ['./', './Index.html', './viki-personality.js', './manifest.json'];
 
 self.addEventListener('install', event => {

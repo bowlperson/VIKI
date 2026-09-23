@@ -888,7 +888,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.3 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.4 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1195,6 +1195,8 @@
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local', 'viki_no_llm'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
+        const REMINDER_TIME_ZONE = 'America/Phoenix';
+        const TUCSON_UTC_OFFSET_HOURS = 7;
 
         // Default asset database with locations
         const DEFAULT_ASSETS = {
@@ -1240,6 +1242,26 @@
         let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
         let supabaseSession = null;
         let syncTimer = null;
+        let reminderClockOffsetMs = 0;
+
+        function getReminderNow() {
+            return new Date(Date.now() + reminderClockOffsetMs);
+        }
+
+        async function syncReminderClock() {
+            if (location.protocol === 'file:') return;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 4000);
+            try {
+                const response = await fetch(`${location.pathname}?viki-time=${Date.now()}`, { method: 'HEAD', cache: 'no-store', signal: controller.signal });
+                const serverTime = Date.parse(response.headers.get('date') || '');
+                if (Number.isFinite(serverTime)) reminderClockOffsetMs = serverTime - Date.now();
+            } catch (error) {
+                reminderClockOffsetMs = 0;
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
 
         function getSupabaseConfig() {
             try { return { url: '', anonKey: '', email: '', ...JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || '{}') }; }
@@ -1332,6 +1354,7 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
+            await syncReminderClock();
             const savedKey = localStorage.getItem('viki_api_key') || '';
             document.getElementById('apiKey').value = savedKey;
 
@@ -1368,6 +1391,7 @@
             setInterval(updateDeviceDateTime, 1000);
             setInterval(refreshDegradationState, 60 * 1000);
             setInterval(checkDueReminders, 60 * 1000);
+            setInterval(syncReminderClock, 15 * 60 * 1000);
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) { refreshDegradationState(); scheduleWakeWordListening(); }
                 else if (isListening && getWakeWordSettings().enabled) recognition.stop();
@@ -1557,8 +1581,8 @@
                         to_email: reminder.recipients.join(', '),
                         reminder_subject: reminder.subject,
                         reminder_body: reminder.body || '',
-                        reminder_datetime: new Date(reminder.reminder_datetime).toLocaleString(),
-                        event_datetime: new Date(reminder.event_datetime).toLocaleString()
+                        reminder_datetime: formatReminderDateTime(reminder.reminder_datetime),
+                        event_datetime: formatReminderDateTime(reminder.event_datetime)
                     }
                 })
             });
@@ -1568,7 +1592,7 @@
         async function checkDueReminders() {
             const settings = getReminderEmailSettings();
             if (!settings.enabled || !settings.serviceId || !settings.templateId || !settings.publicKey || !supabaseSession?.user?.id) return;
-            const now = getDeviceNow();
+            const now = getReminderNow();
             const due = getReminders().filter(reminder => reminder.status === 'pending' && !Number.isNaN(Date.parse(reminder.reminder_datetime)) && new Date(reminder.reminder_datetime) <= now);
             for (const reminder of due) {
                 try {
@@ -2371,8 +2395,8 @@
                 grid.append(
                     field('SUBJECT', 'subject', 'text', reminder.subject),
                     field('RECIPIENT EMAIL(S)', 'recipients', 'text', reminder.recipients.join(', ')),
-                    field('REMINDER SEND TIME', 'reminder_datetime', 'datetime-local', formatDateTimeLocal(reminder.reminder_datetime)),
-                    field('EVENT / DEADLINE TIME', 'event_datetime', 'datetime-local', formatDateTimeLocal(reminder.event_datetime))
+                    field('REMINDER SEND TIME', 'reminder_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.reminder_datetime)),
+                    field('EVENT / DEADLINE TIME', 'event_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.event_datetime))
                 );
                 const status = document.createElement('div');
                 status.className = 'reminder-status';
@@ -2400,15 +2424,15 @@
             if (!reminder) return;
             const value = name => card.querySelector(`[data-field="${name}"]`).value.trim();
             const recipients = parseRecipientField(value('recipients'));
-            const sendAt = new Date(value('reminder_datetime'));
-            const eventAt = new Date(value('event_datetime'));
-            if (!value('subject') || !recipients.length || recipients.some(email => !isValidEmail(email)) || Number.isNaN(sendAt.getTime()) || Number.isNaN(eventAt.getTime())) {
+            const sendAt = parseReminderDateValue(value('reminder_datetime'));
+            const eventAt = parseReminderDateValue(value('event_datetime'));
+            if (!value('subject') || !recipients.length || recipients.some(email => !isValidEmail(email)) || !sendAt || !eventAt || Number.isNaN(sendAt.getTime()) || Number.isNaN(eventAt.getTime())) {
                 addMessage('Reminder save rejected. A subject, valid recipient email(s), reminder time, and event time are required.', 'error');
                 return;
             }
             const sendChanged = reminder.reminder_datetime !== sendAt.toISOString();
             Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), event_datetime: eventAt.toISOString() });
-            if (sendChanged && sendAt > getDeviceNow()) { reminder.status = 'pending'; reminder.sent_at = null; }
+            if (sendChanged && sendAt > getReminderNow()) { reminder.status = 'pending'; reminder.sent_at = null; }
             queueRemoteSave();
             renderReminderRegistry();
             addMessage(`Reminder updated: ${reminder.subject}.`, 'system');
@@ -3258,11 +3282,34 @@
             return { hour, minute, second };
         }
 
-        function createBrowserLocalDate(year, month, day, timeText) {
+        function getTucsonDateParts(date = getReminderNow()) {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: REMINDER_TIME_ZONE, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: 'numeric', minute: 'numeric', second: 'numeric'
+            }).formatToParts(date);
+            const value = type => Number(parts.find(part => part.type === type)?.value);
+            return { year: value('year'), month: value('month'), day: value('day'), hour: value('hour'), minute: value('minute'), second: value('second') };
+        }
+
+        function formatTucsonDateTimeLocal(value) {
+            const part = getTucsonDateParts(new Date(value));
+            const pad = number => String(number).padStart(2, '0');
+            return `${part.year}-${pad(part.month)}-${pad(part.day)}T${pad(part.hour)}:${pad(part.minute)}`;
+        }
+
+        function formatReminderDateTime(value) {
+            return new Intl.DateTimeFormat(undefined, {
+                timeZone: REMINDER_TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
+            }).format(new Date(value));
+        }
+
+        function createTucsonDate(year, month, day, timeText) {
             const time = parseLocalTimeParts(timeText);
             if (!time) return null;
-            const date = new Date(Number(year), Number(month) - 1, Number(day), time.hour, time.minute, time.second, 0);
-            if (date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return null;
+            const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), time.hour + TUCSON_UTC_OFFSET_HOURS, time.minute, time.second, 0));
+            const verified = getTucsonDateParts(date);
+            if (verified.year !== Number(year) || verified.month !== Number(month) || verified.day !== Number(day)) return null;
             return date;
         }
 
@@ -3273,17 +3320,17 @@
                 return Number.isNaN(instant.getTime()) ? null : instant;
             }
             let match = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[t\s]+(.+))?$/i);
-            if (match) return createBrowserLocalDate(match[1], match[2], match[3], match[4]);
+            if (match) return createTucsonDate(match[1], match[2], match[3], match[4]);
             match = input.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s+(.+))?$/i);
             if (match) {
                 const year = Number(match[3]) < 100 ? 2000 + Number(match[3]) : Number(match[3]);
-                return createBrowserLocalDate(year, match[1], match[2], match[4]);
+                return createTucsonDate(year, match[1], match[2], match[4]);
             }
             const months = { january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4, may: 5, june: 6, jun: 6, july: 7, jul: 7, august: 8, aug: 8, september: 9, sep: 9, sept: 9, october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12 };
             match = input.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{4})(?:\s+(.+))?$/i);
-            if (match && months[match[1].toLowerCase()]) return createBrowserLocalDate(match[3], months[match[1].toLowerCase()], match[2], match[4]);
+            if (match && months[match[1].toLowerCase()]) return createTucsonDate(match[3], months[match[1].toLowerCase()], match[2], match[4]);
             match = input.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)[,]?\s+(\d{4})(?:\s+(.+))?$/i);
-            if (match && months[match[2].toLowerCase()]) return createBrowserLocalDate(match[3], months[match[2].toLowerCase()], match[1], match[4]);
+            if (match && months[match[2].toLowerCase()]) return createTucsonDate(match[3], months[match[2].toLowerCase()], match[1], match[4]);
             const parsed = new Date(input);
             return Number.isNaN(parsed.getTime()) ? null : parsed;
         }
@@ -3291,13 +3338,10 @@
         function parseReminderDateValue(value) {
             const input = String(value || '').trim().replace(/^(?:reminder|send|event|deadline)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*/i, '').replace(/(?:\s+at\s+|\s*@\s*)/ig, ' ');
             if (!input) return null;
-            const now = getDeviceNow();
+            const now = getReminderNow();
+            const today = getTucsonDateParts(now);
             const timeOnly = parseLocalTimeParts(input);
-            if (timeOnly) {
-                const localDate = new Date(now);
-                localDate.setHours(timeOnly.hour, timeOnly.minute, timeOnly.second, 0);
-                return localDate;
-            }
+            if (timeOnly) return createTucsonDate(today.year, today.month, today.day, input);
             const numberWords = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, half: 0.5 };
             const relative = input.match(/^in\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|half)(?:\s+of\s+an?)?\s*(minute|hour|day|week)s?$/i);
             if (relative) {
@@ -3308,22 +3352,21 @@
             const weekday = input.match(/^(?:(next)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)(?:\s+(?:at\s+)?)?(.+)?$/i);
             if (weekday) {
                 const weekdayIndex = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].indexOf(weekday[2].toLowerCase());
-                let daysAhead = (weekdayIndex - now.getDay() + 7) % 7;
+                const calendarDate = new Date(Date.UTC(today.year, today.month - 1, today.day));
+                let daysAhead = (weekdayIndex - calendarDate.getUTCDay() + 7) % 7;
                 if (daysAhead === 0 || weekday[1]) daysAhead += daysAhead === 0 ? 7 : 0;
-                const date = new Date(now); date.setDate(date.getDate() + daysAhead);
+                calendarDate.setUTCDate(calendarDate.getUTCDate() + daysAhead);
                 const time = parseLocalTimeParts((weekday[3] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM'));
                 if (!time) return null;
-                date.setHours(time.hour, time.minute, time.second, 0);
-                return date;
+                return createTucsonDate(calendarDate.getUTCFullYear(), calendarDate.getUTCMonth() + 1, calendarDate.getUTCDate(), `${time.hour}:${String(time.minute).padStart(2, '0')}:${String(time.second).padStart(2, '0')}`);
             }
             const relativeDay = input.match(/^(today|tomorrow)(?:\s+(?:at\s+)?)?(.+)?$/i);
             if (relativeDay) {
-                const date = new Date(now);
-                if (relativeDay[1].toLowerCase() === 'tomorrow') date.setDate(date.getDate() + 1);
+                const calendarDate = new Date(Date.UTC(today.year, today.month - 1, today.day));
+                if (relativeDay[1].toLowerCase() === 'tomorrow') calendarDate.setUTCDate(calendarDate.getUTCDate() + 1);
                 const time = parseLocalTimeParts((relativeDay[2] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM'));
                 if (!time) return null;
-                date.setHours(time.hour, time.minute, time.second, 0);
-                return date;
+                return createTucsonDate(calendarDate.getUTCFullYear(), calendarDate.getUTCMonth() + 1, calendarDate.getUTCDate(), `${time.hour}:${String(time.minute).padStart(2, '0')}:${String(time.second).padStart(2, '0')}`);
             }
             return parseBrowserLocalDateTime(input);
         }
@@ -3363,15 +3406,13 @@
 
         function validateReminderDates(reminderDate, eventDate) {
             if (!(reminderDate instanceof Date) || Number.isNaN(reminderDate.getTime()) || !(eventDate instanceof Date) || Number.isNaN(eventDate.getTime())) return 'Both reminder and event date/time values are required.';
-            if (reminderDate.getTime() <= getDeviceNow().getTime()) return `The reminder send time must be in the future. VIKI read it as ${reminderDate.toLocaleString()} using this browser's local time.`;
+            if (reminderDate.getTime() <= getReminderNow().getTime()) return `The reminder send time must be in the future. VIKI read it as ${formatReminderDateTime(reminderDate)} using Tucson, Arizona time.`;
             if (eventDate < reminderDate) return 'The event/deadline time cannot be earlier than the reminder send time.';
             return '';
         }
 
         async function getPoweredReminderDates(input) {
-            const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'browser local time';
-            const offsetMinutes = -getDeviceNow().getTimezoneOffset();
-            const payload = await callAI(`REMINDER DATE FORMAT REVIEW: Parse exactly two date/time values from the Operator text below using the supplied device time. Interpret any date without an explicit timezone in the browser's local timezone (${browserZone}, current UTC offset ${offsetMinutes} minutes). The first is reminder_datetime (email send time); the second is event_datetime (actual event/deadline). Return one parse_reminder_dates action with both values as ISO timestamps including the correct UTC offset. Do not rewrite any subject or notes. Operator text: ${input}`, { apply: false });
+            const payload = await callAI(`REMINDER DATE FORMAT REVIEW: Parse exactly two date/time values from the Operator text below using Tucson, Arizona time (${REMINDER_TIME_ZONE}, UTC-07:00/MST year-round). The first is reminder_datetime (email send time); the second is event_datetime (actual event/deadline). Return one parse_reminder_dates action with both values as ISO timestamps including the -07:00 offset. Do not rewrite any subject or notes. Operator text: ${input}`, { apply: false });
             const action = payload.actions.find(candidate => candidate.type === 'parse_reminder_dates');
             if (!action) return null;
             const reminderDate = parseReminderDateValue(action.reminder_datetime);
@@ -3417,15 +3458,15 @@
             };
             databaseState.reminders = [...getReminders(), reminder];
             queueRemoteSave();
-            addMessage(`Reminder scheduled for ${new Date(reminder.reminder_datetime).toLocaleString()}. Event/deadline: ${new Date(reminder.event_datetime).toLocaleString()}.`, 'assistant');
+            addMessage(`Reminder scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}. Event/deadline: ${formatReminderDateTime(reminder.event_datetime)}.`, 'assistant');
         }
 
         function confirmReminderDraft(draft) {
             const summary = [
                 `Subject: ${draft.subject}`,
                 `Notes: ${draft.body || 'None'}`,
-                `Reminder send time: ${new Date(draft.reminder_datetime).toLocaleString()}`,
-                `Event/deadline time: ${new Date(draft.event_datetime).toLocaleString()}`,
+                `Reminder send time: ${formatReminderDateTime(draft.reminder_datetime)}`,
+                `Event/deadline time: ${formatReminderDateTime(draft.event_datetime)}`,
                 `Recipients: ${draft.recipients.join(', ')}`
             ].join('\n');
             pendingQuestions = {
@@ -3445,7 +3486,7 @@
                         if (error) addMessage(error, 'error');
                         else {
                             draft.reminder_datetime = revisedReminderDate.toISOString();
-                            addMessage(`Reminder send time updated using browser-local time: ${revisedReminderDate.toLocaleString()}.`, 'system');
+                            addMessage(`Reminder send time updated using Tucson time: ${formatReminderDateTime(revisedReminderDate)}.`, 'system');
                         }
                         confirmReminderDraft(draft);
                         return;
@@ -3479,7 +3520,7 @@
         function askReminderSendDate(draft) {
             setReminderReplyHandler('Date formatting remains ambiguous. What exact date and time should the reminder email be sent?', reply => {
                 const reminderDate = parseReminderDateValue(reply);
-                if (!reminderDate || reminderDate <= getDeviceNow()) { addMessage('Enter a valid future reminder date and time.', 'error'); askReminderSendDate(draft); return; }
+                if (!reminderDate || reminderDate <= getReminderNow()) { addMessage('Enter a valid future reminder date and time in Tucson, Arizona.', 'error'); askReminderSendDate(draft); return; }
                 askReminderEventDate(draft, reminderDate);
             });
         }
@@ -3489,7 +3530,7 @@
                 let dates = parseReminderDatePair(reply);
                 if (!dates && !appearsToContainTwoReminderDates(reply)) {
                     const singleReminderDate = parseReminderDateValue(reply);
-                    if (singleReminderDate && singleReminderDate > getDeviceNow()) {
+                    if (singleReminderDate && singleReminderDate > getReminderNow()) {
                         askReminderEventDate(draft, singleReminderDate);
                         return;
                     }
@@ -3524,7 +3565,7 @@
         function formatReminderReport() {
             const reminders = getReminders().filter(reminder => reminder.status === 'pending').sort((a, b) => new Date(a.reminder_datetime) - new Date(b.reminder_datetime));
             if (reminders.length === 0) return 'No pending reminders are scheduled.';
-            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — SEND ${new Date(reminder.reminder_datetime).toLocaleString()} — EVENT ${new Date(reminder.event_datetime).toLocaleString()} — ${reminder.recipients.join(', ')}`).join('\n')}`;
+            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — SEND ${formatReminderDateTime(reminder.reminder_datetime)} — EVENT ${formatReminderDateTime(reminder.event_datetime)} — ${reminder.recipients.join(', ')}`).join('\n')}`;
         }
 
         async function handleLocalCommand(text) {
