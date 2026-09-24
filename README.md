@@ -116,15 +116,18 @@ The matching priority can prefer exact food names or tags. Preset names, tags, c
 
 ## Reminders
 
-Enter `Add Reminder` in the conversation to create an email reminder without requiring an LLM. VIKI collects the subject verbatim, optional notes verbatim, two distinct timestamps, and recipients in sequence. The first timestamp (`reminder_datetime`) controls when the email is sent; the second (`event_datetime`) identifies when the actual event or deadline occurs. Dates may be entered with explicit labels separated by a pipe, semicolon, or new line, for example:
+Enter `Add Reminder` to create an email reminder without an LLM. VIKI collects the subject and optional notes verbatim, then asks for **Reminder 1** and **Reminder 2 in separate messages**. Reminder 1 is required. Reply `NONE` when asked for Reminder 2 to opt out. If both are supplied, Reminder 2 must be later than Reminder 1 and the same subject, body, and recipients are emailed at both times.
 
 ```text
-REMINDER: October 10, 2026 at 9:00 AM | EVENT: October 10, 2026 at 2:00 PM
+VIKI: When should Reminder 1 send?
+OPERATOR: October 10, 2026 at 9:00 AM
+VIKI: When should Reminder 2 send? Enter a Tucson date/time, or reply NONE.
+OPERATOR: October 10, 2026 at 1:00 PM
 ```
 
-Common ISO, US numeric, month-name, `today`, `tomorrow`, and relative inputs such as `in 2 hours` are handled locally. If a combined date response remains ambiguous and AI is enabled, VIKI asks the configured model only to normalize the two timestamps; subjects and notes are never rewritten. With NO_LLM enabled, VIKI asks for the send time and event time separately instead.
+Common ISO, US numeric, month-name, `today`, `tomorrow`, and relative inputs such as `in 2 hours` are handled locally. Reminder date parsing never calls the configured model.
 
-Reminder scheduling uses Tucson, Arizona (`America/Phoenix`, UTC−07:00/MST year-round) regardless of the device's configured timezone. On the hosted app, VIKI periodically reads the same-origin HTTP `Date` response header as a server-clock reference and falls back to the device clock if the network is unavailable. Inputs such as `today @ 5:30pm` and confirmation corrections such as `set it to 5:30pm` therefore mean 5:30 PM Tucson time. Explicit offsets such as `Z`, `-04:00`, or `+01:00` remain absolute instants. A single date response is treated only as the reminder send time and VIKI separately requests the event time; the LLM cannot invent a missing second date. Validation messages, registry fields, reports, and EmailJS reminder timestamps are all displayed in MST.
+Reminder scheduling uses Tucson, Arizona (`America/Phoenix`, UTC−07:00/MST year-round) regardless of the device's configured timezone. On the hosted app, VIKI periodically reads the same-origin HTTP `Date` response header as a server-clock reference and falls back to the device clock if the network is unavailable. Inputs such as `today @ 5:30pm` and confirmation corrections such as `set it to 5:30pm` therefore mean 5:30 PM Tucson time. Explicit offsets such as `Z`, `-04:00`, or `+01:00` remain absolute instants. Validation messages, registry fields, reports, and EmailJS reminder timestamps are all displayed in MST.
 
 Configure the independent **Reminder Emails [EmailJS]** section with Abel's and Anna's reference addresses plus a reminder-specific EmailJS service ID, template ID, and public key. A reminder can target Abel, Anna, both, or one or more custom addresses entered during creation. The reminder EmailJS template should use:
 
@@ -133,9 +136,11 @@ To Email: {{to_email}}
 Subject: {{reminder_subject}}
 Body/notes: {{reminder_body}}
 Reminder send time: {{reminder_datetime}}
-Event/deadline time: {{event_datetime}}
+Which send: {{reminder_number}}
+Reminder 1 time: {{reminder_1_datetime}}
+Reminder 2 time: {{reminder_2_datetime}}
 ```
 
 Pending and sent reminders synchronize inside the authenticated Supabase state. Delivery checks run when VIKI loads and once per minute while the application remains open; GitHub Pages cannot execute scheduled browser JavaScript while every VIKI tab is closed. Enter `Reminders` or `List reminders` to review pending schedules.
 
-Select the **ASSET_REGISTRY** title to switch to **REMINDER_REG**. Reminder cards expose the subject, optional email body, recipients, reminder send time, and separate event/deadline time for direct editing. Each card can be saved or deleted, and the registry can be filtered to all reminders or those addressed to the configured Abel or Anna email. Select the title again to return to assets. The shortened reminder title remains on one line beside the registry actions at default zoom, while the stacked mobile layout and installable PWA use the same controls.
+Select the **ASSET_REGISTRY** title to switch to **REMINDER_REG**. Reminder cards expose the subject, optional email body, recipients, required Reminder 1 time, and optional Reminder 2 time for direct editing. Each card can be saved or deleted, and the registry can be filtered to all reminders or those addressed to the configured Abel or Anna email. Select the title again to return to assets. The shortened reminder title remains on one line beside the registry actions at default zoom, while the stacked mobile layout and installable PWA use the same controls.

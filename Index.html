@@ -888,7 +888,7 @@
     <div class="header">
         <div class="header-left">
             <div class="logo" id="vikiLogo">VIKI</div>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.10.4 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1168,7 +1168,7 @@
                     <div class="config-row"><label class="config-label" for="reminderEmailJsServiceId">EMAILJS_SERVICE_ID</label><input class="config-input" id="reminderEmailJsServiceId" type="text" placeholder="service_xxxxx"></div>
                     <div class="config-row"><label class="config-label" for="reminderEmailJsTemplateId">EMAILJS_TEMPLATE_ID</label><input class="config-input" id="reminderEmailJsTemplateId" type="text" placeholder="template_xxxxx"></div>
                     <div class="config-row"><label class="config-label" for="reminderEmailJsPublicKey">EMAILJS_PUBLIC_KEY</label><input class="config-input" id="reminderEmailJsPublicKey" type="password" placeholder="PUBLIC_KEY"></div>
-                    <div class="config-help">Separate EmailJS template for reminders. Template variables: to_email, reminder_subject, reminder_body, reminder_datetime, event_datetime. Scheduled delivery runs while VIKI is open.</div>
+                    <div class="config-help">Separate EmailJS template for reminders. Template variables: to_email, reminder_subject, reminder_body, reminder_datetime, reminder_number, reminder_1_datetime, reminder_2_datetime. The same email is sent at Reminder 1 and optional Reminder 2 while VIKI is open.</div>
                     <div class="config-actions"><button type="button" class="config-button" id="saveReminderEmailSettingsButton">SAVE_REMINDER_EMAIL_SETTINGS</button></div>
                 </section>
             </div>
@@ -1569,7 +1569,7 @@
             return Array.isArray(databaseState.reminders) ? databaseState.reminders : [];
         }
 
-        async function sendReminderEmail(reminder, settings) {
+        async function sendReminderEmail(reminder, settings, reminderNumber, scheduledAt) {
             const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1581,8 +1581,10 @@
                         to_email: reminder.recipients.join(', '),
                         reminder_subject: reminder.subject,
                         reminder_body: reminder.body || '',
-                        reminder_datetime: formatReminderDateTime(reminder.reminder_datetime),
-                        event_datetime: formatReminderDateTime(reminder.event_datetime)
+                        reminder_datetime: formatReminderDateTime(scheduledAt),
+                        reminder_number: String(reminderNumber),
+                        reminder_1_datetime: formatReminderDateTime(reminder.reminder_datetime),
+                        reminder_2_datetime: reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'None'
                     }
                 })
             });
@@ -1593,16 +1595,23 @@
             const settings = getReminderEmailSettings();
             if (!settings.enabled || !settings.serviceId || !settings.templateId || !settings.publicKey || !supabaseSession?.user?.id) return;
             const now = getReminderNow();
-            const due = getReminders().filter(reminder => reminder.status === 'pending' && !Number.isNaN(Date.parse(reminder.reminder_datetime)) && new Date(reminder.reminder_datetime) <= now);
-            for (const reminder of due) {
-                try {
-                    await sendReminderEmail(reminder, settings);
-                    reminder.status = 'sent';
-                    reminder.sent_at = getDeviceNow().toISOString();
-                    reminder.last_error = null;
-                    queueRemoteSave();
-                    addMessage(`REMINDER SENT: ${reminder.subject} → ${reminder.recipients.join(', ')}`, 'system');
-                } catch (error) {
+            const pending = getReminders().filter(reminder => reminder.status === 'pending');
+            for (const reminder of pending) {
+                let changed = false;
+                const deliveries = [
+                    { number: 1, at: reminder.reminder_datetime, sentKey: 'first_sent_at' },
+                    { number: 2, at: reminder.second_reminder_datetime, sentKey: 'second_sent_at' }
+                ];
+                for (const delivery of deliveries) {
+                    if (!delivery.at || reminder[delivery.sentKey] || Number.isNaN(Date.parse(delivery.at)) || new Date(delivery.at) > now) continue;
+                    try {
+                        await sendReminderEmail(reminder, settings, delivery.number, delivery.at);
+                        reminder[delivery.sentKey] = getReminderNow().toISOString();
+                        reminder.sent_at = reminder[delivery.sentKey];
+                        reminder.last_error = null;
+                        changed = true;
+                        addMessage(`REMINDER ${delivery.number} SENT: ${reminder.subject} → ${reminder.recipients.join(', ')}`, 'system');
+                    } catch (error) {
                     const lastReported = reminder.last_error_at ? new Date(reminder.last_error_at) : null;
                     reminder.last_error = error.message;
                     if (!lastReported || now - lastReported >= 60 * 60 * 1000) {
@@ -1610,7 +1619,13 @@
                         queueRemoteSave();
                         addMessage(`Reminder delivery failed: ${error.message}`, 'error');
                     }
+                    }
                 }
+                if (reminder.first_sent_at && (!reminder.second_reminder_datetime || reminder.second_sent_at)) {
+                    reminder.status = 'sent';
+                    changed = true;
+                }
+                if (changed) queueRemoteSave();
             }
         }
 
@@ -1642,7 +1657,7 @@
                 && typeof reminder.subject === 'string' && reminder.subject.trim()
                 && typeof reminder.body === 'string'
                 && typeof reminder.reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.reminder_datetime))
-                && typeof reminder.event_datetime === 'string' && !Number.isNaN(Date.parse(reminder.event_datetime))
+                && (reminder.second_reminder_datetime == null || (typeof reminder.second_reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.second_reminder_datetime))) || (typeof reminder.event_datetime === 'string' && !Number.isNaN(Date.parse(reminder.event_datetime))))
                 && Array.isArray(reminder.recipients) && reminder.recipients.length > 0 && reminder.recipients.every(isValidEmail)
                 && ['pending', 'sent'].includes(reminder.status));
         }
@@ -2395,8 +2410,8 @@
                 grid.append(
                     field('SUBJECT', 'subject', 'text', reminder.subject),
                     field('RECIPIENT EMAIL(S)', 'recipients', 'text', reminder.recipients.join(', ')),
-                    field('REMINDER SEND TIME', 'reminder_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.reminder_datetime)),
-                    field('EVENT / DEADLINE TIME', 'event_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.event_datetime))
+                    field('REMINDER 1', 'reminder_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.reminder_datetime)),
+                    field('REMINDER 2 (OPTIONAL)', 'second_reminder_datetime', 'datetime-local', reminder.second_reminder_datetime ? formatTucsonDateTimeLocal(reminder.second_reminder_datetime) : '')
                 );
                 const status = document.createElement('div');
                 status.className = 'reminder-status';
@@ -2425,14 +2440,21 @@
             const value = name => card.querySelector(`[data-field="${name}"]`).value.trim();
             const recipients = parseRecipientField(value('recipients'));
             const sendAt = parseReminderDateValue(value('reminder_datetime'));
-            const eventAt = parseReminderDateValue(value('event_datetime'));
-            if (!value('subject') || !recipients.length || recipients.some(email => !isValidEmail(email)) || !sendAt || !eventAt || Number.isNaN(sendAt.getTime()) || Number.isNaN(eventAt.getTime())) {
-                addMessage('Reminder save rejected. A subject, valid recipient email(s), reminder time, and event time are required.', 'error');
+            const secondAt = value('second_reminder_datetime') ? parseReminderDateValue(value('second_reminder_datetime')) : null;
+            if (!value('subject') || !recipients.length || recipients.some(email => !isValidEmail(email)) || !sendAt || Number.isNaN(sendAt.getTime()) || (secondAt && Number.isNaN(secondAt.getTime()))) {
+                addMessage('Reminder save rejected. A subject, valid recipient email(s), and Reminder 1 are required.', 'error');
+                return;
+            }
+            if (secondAt && secondAt <= sendAt) {
+                addMessage('Reminder 2 must be later than Reminder 1, or leave Reminder 2 empty.', 'error');
                 return;
             }
             const sendChanged = reminder.reminder_datetime !== sendAt.toISOString();
-            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), event_datetime: eventAt.toISOString() });
-            if (sendChanged && sendAt > getReminderNow()) { reminder.status = 'pending'; reminder.sent_at = null; }
+            const secondValue = secondAt ? secondAt.toISOString() : null;
+            const secondChanged = (reminder.second_reminder_datetime || null) !== secondValue;
+            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), second_reminder_datetime: secondValue });
+            if (sendChanged && sendAt > getReminderNow()) { reminder.status = 'pending'; reminder.first_sent_at = null; reminder.sent_at = null; }
+            if (secondChanged) { reminder.second_sent_at = null; if (secondAt) reminder.status = 'pending'; }
             queueRemoteSave();
             renderReminderRegistry();
             addMessage(`Reminder updated: ${reminder.subject}.`, 'system');
@@ -3371,55 +3393,6 @@
             return parseBrowserLocalDateTime(input);
         }
 
-        function parseReminderDatePair(input) {
-            const text = String(input || '').trim();
-            let parts = null;
-            const labeled = text.match(/^(?:reminder|send)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*(.+?)(?:\s*(?:\||;|\n)\s*|\s+(?:event|deadline)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*)(.+)$/i);
-            if (labeled) parts = [labeled[1], labeled[2]];
-            if (!parts) {
-                const ordinal = text.match(/^(?:first(?:,|:)?)?\s*(.+?)\s+(?:and\s+)?second(?:,|:)?\s*(.+)$/i);
-                if (ordinal) parts = [ordinal[1], ordinal[2]];
-            }
-            if (!parts) {
-                const contextual = text.match(/^(?:remind me|send (?:it|the reminder))(?:\s+on|\s+at)?\s+(.+?)\s+(?:for|before)\s+(?:the\s+)?(?:event|deadline)(?:\s+on|\s+at)?\s+(.+)$/i);
-                if (contextual) parts = [contextual[1], contextual[2]];
-            }
-            if (!parts) {
-                const split = text.split(/\s*(?:\||;|\n|\s\/\s|\s+then\s+|\s+and then\s+)\s*/i).filter(Boolean);
-                if (split.length === 2) parts = split;
-            }
-            if (!parts) {
-                const isoDates = text.match(/\d{4}-\d{2}-\d{2}(?:[T\s]\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:AM|PM|Z|[+-]\d{2}:?\d{2}))?)?/gi);
-                if (isoDates?.length === 2) parts = isoDates;
-            }
-            if (!parts) return null;
-            const reminderDate = parseReminderDateValue(parts[0]);
-            const eventDate = parseReminderDateValue(parts[1]);
-            return reminderDate && eventDate ? { reminderDate, eventDate } : null;
-        }
-
-        function appearsToContainTwoReminderDates(input) {
-            const text = String(input || '');
-            return /(?:\||;|\n|\s\/\s|\b(?:then|and then|second)\b)/i.test(text)
-                || (/\b(?:reminder|send)\b/i.test(text) && /\b(?:event|deadline)\b/i.test(text));
-        }
-
-        function validateReminderDates(reminderDate, eventDate) {
-            if (!(reminderDate instanceof Date) || Number.isNaN(reminderDate.getTime()) || !(eventDate instanceof Date) || Number.isNaN(eventDate.getTime())) return 'Both reminder and event date/time values are required.';
-            if (reminderDate.getTime() <= getReminderNow().getTime()) return `The reminder send time must be in the future. VIKI read it as ${formatReminderDateTime(reminderDate)} using Tucson, Arizona time.`;
-            if (eventDate < reminderDate) return 'The event/deadline time cannot be earlier than the reminder send time.';
-            return '';
-        }
-
-        async function getPoweredReminderDates(input) {
-            const payload = await callAI(`REMINDER DATE FORMAT REVIEW: Parse exactly two date/time values from the Operator text below using Tucson, Arizona time (${REMINDER_TIME_ZONE}, UTC-07:00/MST year-round). The first is reminder_datetime (email send time); the second is event_datetime (actual event/deadline). Return one parse_reminder_dates action with both values as ISO timestamps including the -07:00 offset. Do not rewrite any subject or notes. Operator text: ${input}`, { apply: false });
-            const action = payload.actions.find(candidate => candidate.type === 'parse_reminder_dates');
-            if (!action) return null;
-            const reminderDate = parseReminderDateValue(action.reminder_datetime);
-            const eventDate = parseReminderDateValue(action.event_datetime);
-            return reminderDate && eventDate ? { reminderDate, eventDate } : null;
-        }
-
         function resolveReminderRecipients(input) {
             const settings = getReminderEmailSettings();
             const lower = input.toLowerCase();
@@ -3450,23 +3423,25 @@
                 subject: draft.subject,
                 body: draft.body,
                 reminder_datetime: draft.reminder_datetime,
-                event_datetime: draft.event_datetime,
+                second_reminder_datetime: draft.second_reminder_datetime || null,
                 recipients: draft.recipients,
                 status: 'pending',
                 created_at: getDeviceNow().toISOString(),
-                sent_at: null
+                sent_at: null,
+                first_sent_at: null,
+                second_sent_at: null
             };
             databaseState.reminders = [...getReminders(), reminder];
             queueRemoteSave();
-            addMessage(`Reminder scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}. Event/deadline: ${formatReminderDateTime(reminder.event_datetime)}.`, 'assistant');
+            addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'}`, 'assistant');
         }
 
         function confirmReminderDraft(draft) {
             const summary = [
                 `Subject: ${draft.subject}`,
                 `Notes: ${draft.body || 'None'}`,
-                `Reminder send time: ${formatReminderDateTime(draft.reminder_datetime)}`,
-                `Event/deadline time: ${formatReminderDateTime(draft.event_datetime)}`,
+                `Reminder 1: ${formatReminderDateTime(draft.reminder_datetime)}`,
+                `Reminder 2: ${draft.second_reminder_datetime ? formatReminderDateTime(draft.second_reminder_datetime) : 'None'}`,
                 `Recipients: ${draft.recipients.join(', ')}`
             ].join('\n');
             pendingQuestions = {
@@ -3481,8 +3456,10 @@
                     const timeChange = reply.match(/^(?:set|change|update)(?:\s+(?:the\s+)?(?:reminder|send(?:\s+time)?|it))?\s+(?:to\s+)?(.+)$/i);
                     if (timeChange) {
                         const revisedReminderDate = parseReminderDateValue(timeChange[1]);
-                        const eventDate = new Date(draft.event_datetime);
-                        const error = validateReminderDates(revisedReminderDate, eventDate);
+                        const secondDate = draft.second_reminder_datetime ? new Date(draft.second_reminder_datetime) : null;
+                        const error = !revisedReminderDate || revisedReminderDate <= getReminderNow()
+                            ? 'Reminder 1 must be in the future.'
+                            : secondDate && secondDate <= revisedReminderDate ? 'Reminder 2 must be later than Reminder 1.' : '';
                         if (error) addMessage(error, 'error');
                         else {
                             draft.reminder_datetime = revisedReminderDate.toISOString();
@@ -3506,57 +3483,52 @@
             });
         }
 
-        function askReminderEventDate(draft, reminderDate) {
-            setReminderReplyHandler('Reminder send time received. What is the date and time of the actual event or deadline?', reply => {
-                const eventDate = parseReminderDateValue(reply);
-                const error = validateReminderDates(reminderDate, eventDate);
-                if (error) { addMessage(error, 'error'); askReminderEventDate(draft, reminderDate); return; }
-                draft.reminder_datetime = reminderDate.toISOString();
-                draft.event_datetime = eventDate.toISOString();
+        function askSecondReminderDate(draft) {
+            setReminderReplyHandler('When should Reminder 2 send? Enter a Tucson date/time, or reply NONE to use only Reminder 1.', reply => {
+                if (/^(?:none|no|skip|no second reminder)$/i.test(reply.trim())) {
+                    draft.second_reminder_datetime = null;
+                    askReminderRecipient(draft);
+                    return;
+                }
+                const secondDate = parseReminderDateValue(reply);
+                const firstDate = new Date(draft.reminder_datetime);
+                if (!secondDate || secondDate <= getReminderNow()) {
+                    addMessage('Reminder 2 must be a valid future date/time in Tucson, or reply NONE.', 'error');
+                    askSecondReminderDate(draft);
+                    return;
+                }
+                if (secondDate <= firstDate) {
+                    addMessage('Reminder 2 must be later than Reminder 1, or reply NONE.', 'error');
+                    askSecondReminderDate(draft);
+                    return;
+                }
+                draft.second_reminder_datetime = secondDate.toISOString();
                 askReminderRecipient(draft);
             });
         }
 
-        function askReminderSendDate(draft) {
-            setReminderReplyHandler('Date formatting remains ambiguous. What exact date and time should the reminder email be sent?', reply => {
-                const reminderDate = parseReminderDateValue(reply);
-                if (!reminderDate || reminderDate <= getReminderNow()) { addMessage('Enter a valid future reminder date and time in Tucson, Arizona.', 'error'); askReminderSendDate(draft); return; }
-                askReminderEventDate(draft, reminderDate);
-            });
-        }
-
-        function askReminderDates(draft) {
-            setReminderReplyHandler('When do you need this reminder? Provide two dates and times: first the email send time, then the actual event or deadline. Example: REMINDER: October 10, 2026 at 9:00 AM | EVENT: October 10, 2026 at 2:00 PM.', async reply => {
-                let dates = parseReminderDatePair(reply);
-                if (!dates && !appearsToContainTwoReminderDates(reply)) {
-                    const singleReminderDate = parseReminderDateValue(reply);
-                    if (singleReminderDate && singleReminderDate > getReminderNow()) {
-                        askReminderEventDate(draft, singleReminderDate);
-                        return;
-                    }
+        function askFirstReminderDate(draft) {
+            setReminderReplyHandler('When should Reminder 1 send? Enter one date and time in Tucson, Arizona.', reply => {
+                const firstDate = parseReminderDateValue(reply);
+                if (!firstDate || firstDate <= getReminderNow()) {
+                    addMessage('Reminder 1 must be a valid future date/time in Tucson, Arizona.', 'error');
+                    askFirstReminderDate(draft);
+                    return;
                 }
-                if (!dates && appearsToContainTwoReminderDates(reply) && !isLLMDisabled()) {
-                    try { dates = await getPoweredReminderDates(reply); }
-                    catch (error) { addMessage(`Powered date review unavailable: ${error.message}`, 'error'); }
-                }
-                if (!dates) { askReminderSendDate(draft); return; }
-                const error = validateReminderDates(dates.reminderDate, dates.eventDate);
-                if (error) { addMessage(error, 'error'); askReminderDates(draft); return; }
-                draft.reminder_datetime = dates.reminderDate.toISOString();
-                draft.event_datetime = dates.eventDate.toISOString();
-                askReminderRecipient(draft);
+                draft.reminder_datetime = firstDate.toISOString();
+                askSecondReminderDate(draft);
             });
         }
 
         function startReminderConversation() {
-            const draft = { subject: '', body: '', reminder_datetime: '', event_datetime: '', recipients: [] };
+            const draft = { subject: '', body: '', reminder_datetime: '', second_reminder_datetime: null, recipients: [] };
             setReminderReplyHandler('What is the subject or gist of the reminder?', reply => {
                 const subject = reply.trim();
                 if (!subject) { addMessage('A reminder subject is required.', 'error'); startReminderConversation(); return; }
                 draft.subject = subject;
                 setReminderReplyHandler('Besides the subject, is there any other information you would like to add to this reminder? Reply SKIP if no additional notes are required.', bodyReply => {
                     draft.body = /^(?:skip|none|no|nothing|no notes?)$/i.test(bodyReply.trim()) ? '' : bodyReply.trim();
-                    askReminderDates(draft);
+                    askFirstReminderDate(draft);
                 });
             });
             return { type: 'pending' };
@@ -3565,7 +3537,7 @@
         function formatReminderReport() {
             const reminders = getReminders().filter(reminder => reminder.status === 'pending').sort((a, b) => new Date(a.reminder_datetime) - new Date(b.reminder_datetime));
             if (reminders.length === 0) return 'No pending reminders are scheduled.';
-            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — SEND ${formatReminderDateTime(reminder.reminder_datetime)} — EVENT ${formatReminderDateTime(reminder.event_datetime)} — ${reminder.recipients.join(', ')}`).join('\n')}`;
+            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — REMINDER 1 ${formatReminderDateTime(reminder.reminder_datetime)} — REMINDER 2 ${reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'NONE'} — ${reminder.recipients.join(', ')}`).join('\n')}`;
         }
 
         async function handleLocalCommand(text) {
@@ -3931,7 +3903,6 @@
                 if (!action || typeof action !== 'object') throw new Error(`Action ${index + 1} malformed.`);
                 if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view', 'update_settings', 'parse_reminder_dates'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
                 if (['add_item', 'consume_item', 'modify_item', 'remove_item'].includes(action.type) && !action.name) throw new Error(`Action ${index + 1} missing name.`);
-                if (action.type === 'parse_reminder_dates' && (!action.reminder_datetime || !action.event_datetime)) throw new Error(`Action ${index + 1} missing reminder dates.`);
             });
             return payload;
         }
