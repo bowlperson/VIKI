@@ -1366,6 +1366,7 @@
         const AI_HISTORY_LIMIT = 10;
         let latestDailyFactsContext = '';
         let latestWeatherFactsContext = '';
+        let latestDailyBriefingData = null;
         let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
         let supabaseSession = null;
         let syncTimer = null;
@@ -3912,7 +3913,7 @@
             const payload = await response.json();
             const stories = (payload.response?.results || []).map(story => ({
                 id: story.id, title: story.webTitle, publicationTime: story.webPublicationDate, url: story.webUrl,
-                summary: stripHtml(story.fields?.trailText), articleText: stripHtml(story.fields?.bodyText).slice(0, 5000)
+                summary: stripHtml(story.fields?.trailText), articleText: stripHtml(story.fields?.bodyText)
             }));
             if (!stories.length) throw new Error('The Guardian Open Platform returned no world headlines.');
             return { source: 'The Guardian Open Platform', retrievedAt: new Date().toISOString(), stories };
@@ -3953,7 +3954,8 @@
 
         async function createDailyBriefing() {
             const data = await fetchDailyBriefingData();
-            latestDailyFactsContext = formatDailyFacts(data, { includeArticleText: true });
+            latestDailyBriefingData = data;
+            latestDailyFactsContext = formatDailyFacts(data);
             // The verified API fields are already the complete briefing. Do not ask the
             // language model to generate a second summary or prepend duplicate content.
             return { message: formatDailyFacts(data) };
@@ -3961,8 +3963,31 @@
 
         async function createPoweredNewsResponse(request) {
             const data = await fetchDailyBriefingData();
-            latestDailyFactsContext = formatDailyFacts(data, { includeArticleText: true });
-            const response = await callAI(request, { currentFacts: latestDailyFactsContext, maxTokens: 1800 });
+            latestDailyBriefingData = data;
+            latestDailyFactsContext = formatDailyFacts(data);
+            const response = await callAI(request, { currentFacts: latestDailyFactsContext, maxTokens: 1800, allowPlainText: true });
+            return { message: response, responseRole: 'powered' };
+        }
+
+        async function createPoweredArticleResponse(request, articleNumber) {
+            const story = latestDailyBriefingData?.news?.stories?.[articleNumber - 1];
+            if (!story) {
+                return { message: `Article ${articleNumber} is not available in the latest Daily Briefing. Run “Daily briefing” to refresh the six articles first.`, error: true };
+            }
+            const articleContext = [
+                `GUARDIAN ARTICLE ${articleNumber}`,
+                `Headline: ${story.title}`,
+                `Source: The Guardian Open Platform`,
+                `Date: ${new Date(story.publicationTime).toLocaleString()}`,
+                `URL: ${story.url}`,
+                `Full article text supplied for comprehension: ${story.articleText || 'UNAVAILABLE'}`
+            ].join('\n');
+            const response = await callAI(`The Operator requested: ${request}\nProvide a detailed but concise summary or explanation of the selected article. Do not reproduce the full article verbatim. If the full article text is unavailable, say so plainly.`, {
+                currentFacts: articleContext,
+                disableWebSearch: true,
+                maxTokens: 2400,
+                allowPlainText: true
+            });
             return { message: response, responseRole: 'powered' };
         }
 
@@ -3992,6 +4017,8 @@
             if (/^(?:add|create|schedule|set)(?:\s+(?:a|new))?\s+reminder[.!?]*$/i.test(text.trim())) return startReminderConversation();
             if (/^(?:show|list|view)?\s*(?:my\s+)?reminders[.!?]*$/i.test(text.trim())) return { message: formatReminderReport() };
             if (/^daily briefing[.!?]*$/i.test(text.trim())) return createDailyBriefing();
+            const articleFollowUp = text.trim().match(/^(?:please\s+)?(?:read|expand(?:\s+on)?|summari[sz]e|explain|tell me (?:more )?about|give me (?:more|details) (?:about|on))\s+(?:the\s+)?(?:news\s+)?article\s*(?:number\s*)?(\d+)(?:\s+please)?[.!?]*$/i);
+            if (articleFollowUp) return createPoweredArticleResponse(text, Number(articleFollowUp[1]));
             if (/^(?:(?:please\s+)?(?:give me\s+)?(?:a\s+)?daily briefing(?:\s+please)?|daily|today's briefing|todays briefing|(?:show|give|tell) me (?:today's |todays )?(?:briefing|headlines|world news)|(?:what(?:'s| is| are) )?(?:today's |todays )?(?:headlines|world news|news articles))[.!?]*$/i.test(text.trim())) return createPoweredNewsResponse(text);
             if (/^(?:(?:please\s+)?(?:show|give|tell) me\s+)?(?:(?:what(?:'s| is| will be)|how(?:'s| is))\s+)?(?:the\s+)?(?:weather|forecast|temperature|chance of (?:rain|snow)|will it (?:rain|snow))(?:\s+(?:today|tonight|tomorrow|this week|outside|in .+))?[.!?]*$/i.test(text.trim())) return createPoweredWeatherResponse(text);
 
@@ -4498,7 +4525,7 @@
             }
         }
 
-        async function requestAI(userMessage, { apply = true, currentFacts = [latestDailyFactsContext, latestWeatherFactsContext].filter(Boolean).join('\n\n'), disableWebSearch = false, maxTokens = 700 } = {}) {
+        async function requestAI(userMessage, { apply = true, currentFacts = [latestDailyFactsContext, latestWeatherFactsContext].filter(Boolean).join('\n\n'), disableWebSearch = false, maxTokens = 700, allowPlainText = false } = {}) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();
@@ -4531,7 +4558,12 @@
 
                 if (!response.ok) throw new Error('Local AI connection failed');
                 const data = await response.json();
-                const payload = validateAIResponse(safeParseAIJson(data.message.content));
+                let payload;
+                try { payload = validateAIResponse(safeParseAIJson(data.message.content)); }
+                catch (error) {
+                    if (!allowPlainText || !String(data.message.content || '').trim()) throw error;
+                    payload = { message: String(data.message.content).trim(), actions: [] };
+                }
                 aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
 
@@ -4558,7 +4590,13 @@
                 }
 
                 const data = await response.json();
-                const payload = validateAIResponse(safeParseAIJson(data.choices[0].message.content));
+                const rawContent = data.choices[0].message.content;
+                let payload;
+                try { payload = validateAIResponse(safeParseAIJson(rawContent)); }
+                catch (error) {
+                    if (!allowPlainText || !String(rawContent || '').trim()) throw error;
+                    payload = { message: String(rawContent).trim(), actions: [] };
+                }
                 aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
             }
