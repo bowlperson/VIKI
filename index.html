@@ -76,10 +76,16 @@
         }
 
         .logo {
+            appearance: none;
+            background: transparent;
+            border: 0;
             color: var(--accent-amber);
+            cursor: default;
+            font-family: inherit;
             font-size: 1.2rem;
             font-weight: bold;
             letter-spacing: 2px;
+            padding: 0;
         }
 
         .logo::before {
@@ -859,23 +865,65 @@
 
         @media (max-width: 780px) {
             body { min-height: 100dvh; height: 100dvh; }
-            .header { align-items: flex-start; gap: 8px; padding: 8px; }
-            .header-left { min-width: 0; }
+            .header {
+                align-items: center;
+                gap: 8px;
+                min-height: 52px;
+                padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+            }
+            .header-left { min-width: 0; order: 2; margin-left: auto; }
+            .logo {
+                cursor: pointer;
+                min-height: 36px;
+                padding: 6px 4px 6px 10px;
+                touch-action: manipulation;
+            }
+            .logo::after {
+                color: var(--accent-dim);
+                content: ' \25BC';
+                font-size: 0.65rem;
+                letter-spacing: 0;
+            }
+            .logo[aria-expanded="true"]::after { content: ' \25B2'; color: var(--accent-cyan); }
+            .logo:focus-visible { outline: 1px dashed var(--accent-cyan); outline-offset: 2px; }
             .subtitle { display: none; }
-            .system-status { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-            .header-button { padding: 8px; }
-            .container { flex-direction: column; overflow-y: auto; }
-            .sidebar { width: 100%; min-height: 44%; border-right: 0; border-bottom: 1px solid var(--border-color); }
-            .main-content { min-height: 52%; }
-            .inventory-list { min-height: 180px; }
-            .input-area { padding: 8px; }
+            .system-status { gap: 6px; justify-content: flex-start; min-width: 0; }
+            .system-status .status-item { display: none; }
+            .header-button { min-height: 36px; padding: 8px; }
+            .container { flex-direction: column; min-height: 0; overflow: hidden; }
+            .sidebar {
+                width: 100%;
+                min-height: 0;
+                flex: 1 1 auto;
+                border-right: 0;
+                border-bottom: 1px solid var(--border-color);
+                overflow: hidden;
+            }
+            body.mobile-registry-hidden .sidebar { display: none; }
+            .main-content { flex: 1 1 auto; min-height: 0; }
+            .terminal-output { padding: 12px 10px; font-size: 0.84rem; line-height: 1.5; }
+            .inventory-list { min-height: 0; }
+            .sidebar-header { padding: 10px; }
+            .filter-tabs { overflow-x: auto; }
+            .filter-tab { min-height: 38px; min-width: max-content; }
+            .inventory-control, .registry-field, .config-input, .config-select { font-size: 16px; min-height: 42px; }
+            .inventory-item { padding: 12px 10px; }
+            .input-area { padding: 8px 8px max(8px, env(safe-area-inset-bottom)); }
+            .quick-commands { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+            .quick-commands::-webkit-scrollbar { display: none; }
+            .quick-cmd { min-height: 36px; flex: 0 0 auto; }
             .input-line { flex-wrap: wrap; }
-            #messageInput { flex-basis: calc(100% - 24px); }
+            .input-prompt { display: none; }
+            #messageInput { flex: 1 1 100%; min-height: 42px; font-size: 16px; }
             .send-btn, .mic-btn, .mute-btn { min-height: 40px; flex: 1; }
+            .voice-status { margin-top: 5px; }
             .registry-editor-header, .registry-editor-meta, .registry-editor-timeline,
             .reminder-card-grid { grid-template-columns: 1fr; }
             .settings-header { flex-direction: column; }
             .settings-header .header-button { width: 100%; }
+            .settings-page { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+            body.registry-edit-mode .sidebar { display: flex; }
+            body.registry-edit-mode .logo { visibility: hidden; }
         }
 
     </style>
@@ -887,7 +935,7 @@
 
     <div class="header">
         <div class="header-left">
-            <div class="logo" id="vikiLogo">VIKI</div>
+            <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
             <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // ABEL & ANNA SYSTEM</div>
         </div>
         <div class="system-status">
@@ -909,7 +957,7 @@
     </div>
 
     <div class="container">
-        <div class="sidebar">
+        <div class="sidebar" id="registrySidebar">
             <div class="sidebar-header">
                 <button type="button" class="sidebar-title registry-title-button" id="registryTitleButton" aria-label="Switch to reminder registry" title="Switch between assets and reminders">ASSET_REGISTRY</button>
                 <div class="registry-actions">
@@ -1243,6 +1291,27 @@
         let supabaseSession = null;
         let syncTimer = null;
         let reminderClockOffsetMs = 0;
+        const mobileLayoutQuery = window.matchMedia('(max-width: 780px)');
+        let mobileRegistryVisible = false;
+
+        function syncMobileRegistryLayout() {
+            const isMobile = mobileLayoutQuery.matches;
+            const hidden = isMobile && !mobileRegistryVisible;
+            const logo = document.getElementById('vikiLogo');
+            document.body.classList.toggle('mobile-registry-hidden', hidden);
+            logo.setAttribute('aria-expanded', String(!hidden));
+            logo.setAttribute('aria-label', isMobile
+                ? `${hidden ? 'Show' : 'Hide'} asset and reminder registry`
+                : 'VIKI home');
+        }
+
+        function toggleMobileRegistry() {
+            if (!mobileLayoutQuery.matches || registryEditMode) return;
+            mobileRegistryVisible = !mobileRegistryVisible;
+            syncMobileRegistryLayout();
+            if (mobileRegistryVisible) document.getElementById('registryTitleButton').focus();
+            else document.getElementById('messageInput').focus();
+        }
 
         function getReminderNow() {
             return new Date(Date.now() + reminderClockOffsetMs);
@@ -4166,6 +4235,7 @@
         document.getElementById('exportDataButton').addEventListener('click', exportData);
         document.getElementById('exportRegistryButton').addEventListener('click', exportData);
         document.getElementById('registryLockButton').addEventListener('click', () => setRegistryEditMode(!registryEditMode));
+        document.getElementById('vikiLogo').addEventListener('click', toggleMobileRegistry);
         document.getElementById('registryTitleButton').addEventListener('click', () => setRegistryView(registryView === 'assets' ? 'reminders' : 'assets'));
         document.getElementById('saveRegistryButton').addEventListener('click', saveManualRegistry);
         document.getElementById('saveEmailSettingsButton').addEventListener('click', saveEmailSettings);
@@ -4180,6 +4250,8 @@
             document.getElementById(id).addEventListener('input', renderInventory);
             document.getElementById(id).addEventListener('change', renderInventory);
         });
+        mobileLayoutQuery.addEventListener('change', syncMobileRegistryLayout);
+        syncMobileRegistryLayout();
     </script>
 </body>
 </html>
