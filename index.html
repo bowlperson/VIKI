@@ -1205,7 +1205,7 @@
                     <div class="config-row"><label class="config-label" for="emailJsServiceId">EMAILJS_SERVICE_ID</label><input class="config-input" id="emailJsServiceId" type="text" placeholder="service_xxxxx"></div>
                     <div class="config-row"><label class="config-label" for="emailJsTemplateId">EMAILJS_TEMPLATE_ID</label><input class="config-input" id="emailJsTemplateId" type="text" placeholder="template_xxxxx"></div>
                     <div class="config-row"><label class="config-label" for="emailJsPublicKey">EMAILJS_PUBLIC_KEY</label><input class="config-input" id="emailJsPublicKey" type="password" placeholder="PUBLIC_KEY"></div>
-                    <div class="config-help">Sends once at exactly 30% remaining, once at exactly 15% remaining when at least 3 days remain, then once per day below 4 days. Browser-safe EmailJS public credentials only. Template variables: to_email, item_name, quantity, location, days_left, percentage_remaining, alert_type, message.</div>
+                    <div class="config-help">Sends once at exactly 30% remaining and once at exactly 15% remaining only when more than 3 days remain, then once per day at 3 days or less. Browser-safe EmailJS public credentials only. Template variables: to_email, item_name, quantity, location, days_left, percentage_remaining, alert_type, message.</div>
                     <div class="config-actions"><button type="button" class="config-button" id="saveEmailSettingsButton">SAVE_EMAIL_SETTINGS</button></div>
                 </section>
                 <section class="settings-section">
@@ -1564,8 +1564,8 @@
             return items.flatMap(item => {
                 const percent = Math.max(0, Math.min(100, Math.round((Number(item.daysLeft) / Number(item.shelfLife)) * 100)));
                 const alerts = [];
-                if (percent === 30) alerts.push({ item, percent, type: '30_PERCENT', signature: `${item.id}:percentage:30` });
-                if (percent === 15 && item.daysLeft >= 3) alerts.push({ item, percent, type: '15_PERCENT', signature: `${item.id}:percentage:15` });
+                if (item.daysLeft > 3 && percent === 30) alerts.push({ item, percent, type: '30_PERCENT', signature: `${item.id}:percentage:30` });
+                if (item.daysLeft > 3 && percent === 15) alerts.push({ item, percent, type: '15_PERCENT', signature: `${item.id}:percentage:15` });
                 if (item.daysLeft < 4) alerts.push({ item, percent, type: 'DAILY_T3', signature: `${item.id}:${item.daysLeft}:${today}` });
                 return alerts.filter(alert => !ledger[alert.signature]);
             });
