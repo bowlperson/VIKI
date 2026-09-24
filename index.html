@@ -1200,12 +1200,12 @@
                 </section>
                 <section class="settings-section">
                     <div class="config-title">// DEGRADATION EMAILS [EMAILJS]</div>
-                    <div class="toggle-row"><input type="checkbox" id="emailNotificationsEnabled"><label class="toggle-label" for="emailNotificationsEnabled">SEND ALERTS AT T-3 DAYS OR LESS</label></div>
+                    <div class="toggle-row"><input type="checkbox" id="emailNotificationsEnabled"><label class="toggle-label" for="emailNotificationsEnabled">SEND DEGRADATION ALERTS</label></div>
                     <div class="config-row"><label class="config-label" for="notificationEmails">RECIPIENT_EMAILS</label><input class="config-input" id="notificationEmails" type="text" placeholder="name@example.com, second@example.com"></div>
                     <div class="config-row"><label class="config-label" for="emailJsServiceId">EMAILJS_SERVICE_ID</label><input class="config-input" id="emailJsServiceId" type="text" placeholder="service_xxxxx"></div>
                     <div class="config-row"><label class="config-label" for="emailJsTemplateId">EMAILJS_TEMPLATE_ID</label><input class="config-input" id="emailJsTemplateId" type="text" placeholder="template_xxxxx"></div>
                     <div class="config-row"><label class="config-label" for="emailJsPublicKey">EMAILJS_PUBLIC_KEY</label><input class="config-input" id="emailJsPublicKey" type="password" placeholder="PUBLIC_KEY"></div>
-                    <div class="config-help">Browser-safe EmailJS public credentials only. Do not enter a Twilio/SendGrid secret API key here. Template variables: to_email, item_name, quantity, location, days_left, message.</div>
+                    <div class="config-help">Sends once at exactly 30% remaining, once at exactly 15% remaining when at least 3 days remain, then once per day below 4 days. Browser-safe EmailJS public credentials only. Template variables: to_email, item_name, quantity, location, days_left, percentage_remaining, alert_type, message.</div>
                     <div class="config-actions"><button type="button" class="config-button" id="saveEmailSettingsButton">SAVE_EMAIL_SETTINGS</button></div>
                 </section>
                 <section class="settings-section">
@@ -1560,15 +1560,28 @@
             checkDegradationEmailNotifications();
         }
 
+        function getDegradationEmailAlerts(items, today, ledger) {
+            return items.flatMap(item => {
+                const percent = Math.max(0, Math.min(100, Math.round((Number(item.daysLeft) / Number(item.shelfLife)) * 100)));
+                const alerts = [];
+                if (percent === 30) alerts.push({ item, percent, type: '30_PERCENT', signature: `${item.id}:percentage:30` });
+                if (percent === 15 && item.daysLeft >= 3) alerts.push({ item, percent, type: '15_PERCENT', signature: `${item.id}:percentage:15` });
+                if (item.daysLeft < 4) alerts.push({ item, percent, type: 'DAILY_T3', signature: `${item.id}:${item.daysLeft}:${today}` });
+                return alerts.filter(alert => !ledger[alert.signature]);
+            });
+        }
+
         async function checkDegradationEmailNotifications() {
             const settings = getEmailSettings();
             if (!settings.enabled || !settings.recipients || !settings.serviceId || !settings.templateId || !settings.publicKey) return;
             const ledger = JSON.parse(localStorage.getItem(EMAIL_ALERT_LEDGER_KEY) || '{}');
             const today = getDeviceNow().toISOString().slice(0, 10);
-            const alerts = getExpiringItems().filter(item => item.daysLeft < 4);
-            for (const item of alerts) {
-                const signature = `${item.id}:${item.daysLeft}:${today}`;
-                if (ledger[signature]) continue;
+            const alerts = getDegradationEmailAlerts(getExpiringItems(), today, ledger);
+            for (const alert of alerts) {
+                const { item, percent, type, signature } = alert;
+                const message = type === 'DAILY_T3'
+                    ? `${item.name} has ${item.daysLeft} day(s) remaining before degradation.`
+                    : `${item.name} has reached exactly ${percent}% of its degradation timeline, with ${item.daysLeft} day(s) remaining.`;
                 const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1582,7 +1595,9 @@
                             quantity: item.quantity,
                             location: item.location,
                             days_left: item.daysLeft,
-                            message: `${item.name} has ${item.daysLeft} day(s) remaining before degradation.`
+                            percentage_remaining: percent,
+                            alert_type: type,
+                            message
                         }
                     })
                 });
