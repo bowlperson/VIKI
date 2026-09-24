@@ -98,6 +98,55 @@
             font-size: 0.75rem;
         }
 
+        .operators-easter-egg {
+            appearance: none;
+            background: transparent;
+            border: 0;
+            color: inherit;
+            cursor: pointer;
+            font: inherit;
+            padding: 2px;
+        }
+
+        .operators-easter-egg:focus-visible {
+            color: var(--accent-cyan);
+            outline: 1px dashed var(--accent-cyan);
+        }
+
+        .love-burst-piece {
+            left: var(--burst-x);
+            pointer-events: none;
+            position: fixed;
+            top: var(--burst-y);
+            z-index: 1200;
+        }
+
+        .love-burst-piece.heart {
+            color: #ff304f;
+            font-size: var(--size);
+            filter: drop-shadow(0 0 6px #ff304f);
+            animation: heart-burst 1.35s ease-out forwards;
+        }
+
+        .love-burst-piece.particle {
+            width: var(--size);
+            height: var(--size);
+            border-radius: 50%;
+            background: #ff667d;
+            box-shadow: 0 0 8px 3px rgba(255, 48, 79, 0.8);
+            animation: particle-burst 1.1s ease-out forwards;
+        }
+
+        @keyframes heart-burst {
+            from { opacity: 1; transform: translate(-50%, -50%) scale(0.4) rotate(0); }
+            to { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.25) rotate(var(--rotation)); }
+        }
+
+        @keyframes particle-burst {
+            from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            to { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0); }
+        }
+
         .system-status {
             display: flex;
             gap: 16px;
@@ -886,7 +935,9 @@
             }
             .logo[aria-expanded="true"]::after { content: ' \25B2'; color: var(--accent-cyan); }
             .logo:focus-visible { outline: 1px dashed var(--accent-cyan); outline-offset: 2px; }
-            .subtitle { display: none; }
+            .subtitle { font-size: 0; }
+            .subtitle-designation { display: none; }
+            .operators-easter-egg { font-size: 0.62rem; white-space: nowrap; }
             .system-status { gap: 6px; justify-content: flex-start; min-width: 0; }
             .system-status .status-item { display: none; }
             .header-button { min-height: 36px; padding: 8px; }
@@ -936,7 +987,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // ABEL & ANNA SYSTEM</div>
+            <div class="subtitle"><span class="subtitle-designation">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna" title="Abel &amp; Anna">ABEL &amp; ANNA</button><span class="subtitle-designation"> SYSTEM</span></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1046,10 +1097,6 @@
 
         <div class="main-content">
             <div class="terminal-output" id="chatArea">
-                <div class="message system">Initializing VIKI system...</div>
-                <div class="message system">Asset registry connection: ESTABLISHED</div>
-                <div class="message system">Neural interface: ONLINE</div>
-                <div class="message system">Thermal preservation units: MONITORED</div>
                 <div id="vikiBootMessages"></div>
             </div>
             <div class="typing-indicator" id="typingIndicator">
@@ -1057,10 +1104,10 @@
             </div>
             <div class="input-area">
                 <div class="quick-commands">
-                    <button class="quick-cmd" onclick="quickMessage('Status report')">STATUS</button>
+                    <button class="quick-cmd" onclick="quickMessage('Add reminder')">REMINDER</button>
                     <button class="quick-cmd" onclick="quickMessage('What is expiring')">DEGRADATION</button>
                     <button class="quick-cmd" onclick="quickMessage('Full inventory')">REGISTRY</button>
-                    <button class="quick-cmd" onclick="quickMessage('What am I forgetting')">NEGLECTED</button>
+                    <button class="quick-cmd" id="customQuickCommandButton" type="button">CUSTOM</button>
                 </div>
                 <div class="input-line">
                     <span class="input-prompt">></span>
@@ -1163,6 +1210,15 @@
                     </div>
                 </section>
                 <section class="settings-section">
+                    <div class="config-title">// CUSTOM</div>
+                    <div class="config-row">
+                        <label class="config-label" for="customQuickCommand">CUSTOM_BUTTON_MESSAGE</label>
+                        <textarea class="config-input config-textarea" id="customQuickCommand" rows="3" placeholder="Leave blank to send nothing"></textarea>
+                    </div>
+                    <div class="config-help">The CUSTOM chat button sends this text exactly as entered. When left blank, the button does nothing.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="saveCustomQuickCommandButton">SAVE_CUSTOM</button></div>
+                </section>
+                <section class="settings-section">
                     <div class="config-title">// MATCHING LOGIC</div>
                     <div class="config-row">
                         <label class="config-label" for="matchingPriority">RULE_PRIORITY</label>
@@ -1237,6 +1293,7 @@
         const EMAIL_SETTINGS_KEY = 'viki_email_settings';
         const EMAIL_ALERT_LEDGER_KEY = 'viki_email_alert_ledger';
         const REMINDER_EMAIL_SETTINGS_KEY = 'viki_reminder_email_settings';
+        const CUSTOM_QUICK_COMMAND_KEY = 'viki_custom_quick_command';
         const NO_LLM_KEY = 'viki_no_llm';
         const SUPABASE_CONFIG_KEY = 'viki_supabase_config';
         const SUPABASE_SESSION_KEY = 'viki_supabase_session';
@@ -1445,6 +1502,7 @@
             loadEmailSettings();
             loadReminderEmailSettings();
             loadWakeWordSettings();
+            document.getElementById('customQuickCommand').value = localStorage.getItem(CUSTOM_QUICK_COMMAND_KEY) || '';
 
             initializeFilterTabs();
             loadAssetDatabase();
@@ -2754,6 +2812,53 @@
         function quickMessage(text) {
             document.getElementById('messageInput').value = text;
             sendMessage();
+        }
+
+        function runCustomQuickCommand() {
+            const message = localStorage.getItem(CUSTOM_QUICK_COMMAND_KEY) || '';
+            if (message.trim()) quickMessage(message);
+        }
+
+        function saveCustomQuickCommand() {
+            const message = document.getElementById('customQuickCommand').value;
+            localStorage.setItem(CUSTOM_QUICK_COMMAND_KEY, message);
+            addMessage(message.trim() ? 'Custom command saved.' : 'Custom command cleared. The CUSTOM button will send nothing.', 'system');
+        }
+
+        let operatorTapCount = 0;
+        let operatorTapTimer = null;
+
+        function launchLoveBurst(origin) {
+            const bounds = origin.getBoundingClientRect();
+            const centerX = bounds.left + bounds.width / 2;
+            const centerY = bounds.top + bounds.height / 2;
+            Array.from({ length: 30 }, (_, index) => {
+                const piece = document.createElement('span');
+                const heart = index < 12;
+                const angle = (Math.PI * 2 * index / 30) + Math.random() * 0.35;
+                const distance = 45 + Math.random() * 100;
+                piece.className = `love-burst-piece ${heart ? 'heart' : 'particle'}`;
+                if (heart) piece.textContent = '♥';
+                piece.style.setProperty('--burst-x', `${centerX}px`);
+                piece.style.setProperty('--burst-y', `${centerY}px`);
+                piece.style.setProperty('--dx', `${Math.cos(angle) * distance}px`);
+                piece.style.setProperty('--dy', `${Math.sin(angle) * distance - 25}px`);
+                piece.style.setProperty('--size', heart ? `${10 + Math.random() * 12}px` : `${3 + Math.random() * 5}px`);
+                piece.style.setProperty('--rotation', `${-55 + Math.random() * 110}deg`);
+                document.body.appendChild(piece);
+                piece.addEventListener('animationend', () => piece.remove(), { once: true });
+            });
+        }
+
+        function registerOperatorTap(event) {
+            operatorTapCount += 1;
+            clearTimeout(operatorTapTimer);
+            if (operatorTapCount >= 3) {
+                operatorTapCount = 0;
+                launchLoveBurst(event.currentTarget);
+                return;
+            }
+            operatorTapTimer = setTimeout(() => { operatorTapCount = 0; }, 1200);
         }
 
         function handleKeyPress(e) {
@@ -4256,6 +4361,9 @@
         document.getElementById('saveEmailSettingsButton').addEventListener('click', saveEmailSettings);
         document.getElementById('saveReminderEmailSettingsButton').addEventListener('click', saveReminderEmailSettings);
         document.getElementById('saveWakeWordSettingsButton').addEventListener('click', saveWakeWordSettings);
+        document.getElementById('customQuickCommandButton').addEventListener('click', runCustomQuickCommand);
+        document.getElementById('saveCustomQuickCommandButton').addEventListener('click', saveCustomQuickCommand);
+        document.getElementById('operatorsEasterEgg').addEventListener('click', registerOperatorTap);
         document.getElementById('reminderRecipientFilter').addEventListener('change', renderReminderRegistry);
         document.getElementById('importDataButton').addEventListener('click', () => document.getElementById('importDataInput').click());
         document.getElementById('importDataInput').addEventListener('change', (e) => importDataFromFile(e.target.files[0]));
