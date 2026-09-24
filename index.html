@@ -1167,6 +1167,10 @@
                         <input class="config-input" id="weatherLocation" type="text" value="Tucson, Arizona" placeholder="City, state or country">
                     </div>
                     <div class="config-help">Weather and geocoding are retrieved from Open-Meteo. Open-Meteo does not require an API key.</div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="weatherUseFahrenheit" checked>
+                        <label class="toggle-label" for="weatherUseFahrenheit">USE FAHRENHEIT [OFF = CELSIUS]</label>
+                    </div>
                     <div class="config-row">
                         <label class="config-label" for="guardianApiKey">THE_GUARDIAN_API_KEY</label>
                         <input class="config-input" id="guardianApiKey" type="password" placeholder="Guardian Open Platform key">
@@ -1360,6 +1364,9 @@
         let availableSpeechVoices = [];
         const aiConversation = [];
         const AI_HISTORY_LIMIT = 10;
+        let latestDailyFactsContext = '';
+        let latestWeatherFactsContext = '';
+        let latestDailyBriefingData = null;
         let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
         let supabaseSession = null;
         let syncTimer = null;
@@ -1611,9 +1618,9 @@
 
         function getDailySettings() {
             try {
-                return { location: 'Tucson, Arizona', guardianApiKey: '', ...JSON.parse(localStorage.getItem(DAILY_SETTINGS_KEY) || '{}') };
+                return { location: 'Tucson, Arizona', guardianApiKey: '', temperatureUnit: 'fahrenheit', ...JSON.parse(localStorage.getItem(DAILY_SETTINGS_KEY) || '{}') };
             } catch (error) {
-                return { location: 'Tucson, Arizona', guardianApiKey: '' };
+                return { location: 'Tucson, Arizona', guardianApiKey: '', temperatureUnit: 'fahrenheit' };
             }
         }
 
@@ -1621,12 +1628,14 @@
             const settings = getDailySettings();
             document.getElementById('weatherLocation').value = settings.location;
             document.getElementById('guardianApiKey').value = settings.guardianApiKey;
+            document.getElementById('weatherUseFahrenheit').checked = settings.temperatureUnit !== 'celsius';
         }
 
         function saveDailySettings() {
             const settings = {
                 location: document.getElementById('weatherLocation').value.trim() || 'Tucson, Arizona',
-                guardianApiKey: document.getElementById('guardianApiKey').value.trim()
+                guardianApiKey: document.getElementById('guardianApiKey').value.trim(),
+                temperatureUnit: document.getElementById('weatherUseFahrenheit').checked ? 'fahrenheit' : 'celsius'
             };
             localStorage.setItem(DAILY_SETTINGS_KEY, JSON.stringify(settings));
             document.getElementById('weatherLocation').value = settings.location;
@@ -1805,11 +1814,48 @@
                     }
                 }
                 if (reminder.first_sent_at && (!reminder.second_reminder_datetime || reminder.second_sent_at)) {
-                    reminder.status = 'sent';
+                    if (normalizeReminderRepeat(reminder.repeat) === 'none') reminder.status = 'sent';
+                    else advanceRepeatingReminder(reminder, now);
                     changed = true;
                 }
                 if (changed) queueRemoteSave();
             }
+        }
+
+        function normalizeReminderRepeat(value) {
+            const repeat = String(value || 'none').toLowerCase();
+            return ['daily', 'weekly', 'monthly'].includes(repeat) ? repeat : 'none';
+        }
+
+        function addReminderInterval(value, repeat) {
+            const date = new Date(value);
+            if (repeat === 'daily') date.setUTCDate(date.getUTCDate() + 1);
+            if (repeat === 'weekly') date.setUTCDate(date.getUTCDate() + 7);
+            if (repeat === 'monthly') {
+                const day = date.getUTCDate();
+                date.setUTCDate(1);
+                date.setUTCMonth(date.getUTCMonth() + 1);
+                const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+                date.setUTCDate(Math.min(day, lastDay));
+            }
+            return date;
+        }
+
+        function advanceRepeatingReminder(reminder, now = getReminderNow()) {
+            const repeat = normalizeReminderRepeat(reminder.repeat);
+            if (repeat === 'none') return;
+            let first = new Date(reminder.reminder_datetime);
+            let second = reminder.second_reminder_datetime ? new Date(reminder.second_reminder_datetime) : null;
+            do {
+                first = addReminderInterval(first, repeat);
+                if (second) second = addReminderInterval(second, repeat);
+            } while ((second || first) <= now);
+            reminder.reminder_datetime = first.toISOString();
+            reminder.second_reminder_datetime = second ? second.toISOString() : null;
+            reminder.first_sent_at = null;
+            reminder.second_sent_at = null;
+            reminder.sent_at = null;
+            reminder.status = 'pending';
         }
 
         function isPlainObject(value) {
@@ -1842,6 +1888,7 @@
                 && typeof reminder.reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.reminder_datetime))
                 && (reminder.second_reminder_datetime == null || (typeof reminder.second_reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.second_reminder_datetime))) || (typeof reminder.event_datetime === 'string' && !Number.isNaN(Date.parse(reminder.event_datetime))))
                 && Array.isArray(reminder.recipients) && reminder.recipients.length > 0 && reminder.recipients.every(isValidEmail)
+                && (reminder.repeat == null || ['none', 'daily', 'weekly', 'monthly'].includes(reminder.repeat))
                 && ['pending', 'sent'].includes(reminder.status));
         }
 
@@ -2588,13 +2635,27 @@
                     label.appendChild(input);
                     return label;
                 };
+                const repeatField = document.createElement('label');
+                repeatField.className = 'registry-edit-field';
+                repeatField.textContent = 'REPEAT';
+                const repeatSelect = document.createElement('select');
+                repeatSelect.className = 'registry-field';
+                repeatSelect.dataset.field = 'repeat';
+                [['none', 'ONCE / NONE'], ['daily', 'DAILY'], ['weekly', 'WEEKLY'], ['monthly', 'MONTHLY']].forEach(([value, label]) => {
+                    const option = document.createElement('option');
+                    option.value = value; option.textContent = label;
+                    repeatSelect.appendChild(option);
+                });
+                repeatSelect.value = normalizeReminderRepeat(reminder.repeat);
+                repeatField.appendChild(repeatSelect);
                 const grid = document.createElement('div');
                 grid.className = 'reminder-card-grid';
                 grid.append(
                     field('SUBJECT', 'subject', 'text', reminder.subject),
                     field('RECIPIENT EMAIL(S)', 'recipients', 'text', reminder.recipients.join(', ')),
                     field('REMINDER 1', 'reminder_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.reminder_datetime)),
-                    field('REMINDER 2 (OPTIONAL)', 'second_reminder_datetime', 'datetime-local', reminder.second_reminder_datetime ? formatTucsonDateTimeLocal(reminder.second_reminder_datetime) : '')
+                    field('REMINDER 2 (OPTIONAL)', 'second_reminder_datetime', 'datetime-local', reminder.second_reminder_datetime ? formatTucsonDateTimeLocal(reminder.second_reminder_datetime) : ''),
+                    repeatField
                 );
                 const status = document.createElement('div');
                 status.className = 'reminder-status';
@@ -2635,9 +2696,17 @@
             const sendChanged = reminder.reminder_datetime !== sendAt.toISOString();
             const secondValue = secondAt ? secondAt.toISOString() : null;
             const secondChanged = (reminder.second_reminder_datetime || null) !== secondValue;
-            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), second_reminder_datetime: secondValue });
+            const repeat = normalizeReminderRepeat(value('repeat'));
+            const repeatChanged = normalizeReminderRepeat(reminder.repeat) !== repeat;
+            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), second_reminder_datetime: secondValue, repeat });
             if (sendChanged && sendAt > getReminderNow()) { reminder.status = 'pending'; reminder.first_sent_at = null; reminder.sent_at = null; }
             if (secondChanged) { reminder.second_sent_at = null; if (secondAt) reminder.status = 'pending'; }
+            if (repeatChanged && repeat !== 'none') {
+                reminder.status = 'pending';
+                reminder.first_sent_at = null;
+                reminder.second_sent_at = null;
+                reminder.sent_at = null;
+            }
             queueRemoteSave();
             renderReminderRegistry();
             addMessage(`Reminder updated: ${reminder.subject}.`, 'system');
@@ -3249,7 +3318,7 @@
                     return;
                 }
                 showTyping(false);
-                addMessage(localResponse.message, localResponse.error ? 'error' : 'assistant');
+                addMessage(localResponse.message, localResponse.error ? 'error' : (localResponse.responseRole || 'assistant'));
                 return;
             }
 
@@ -3655,6 +3724,7 @@
                 body: draft.body,
                 reminder_datetime: draft.reminder_datetime,
                 second_reminder_datetime: draft.second_reminder_datetime || null,
+                repeat: normalizeReminderRepeat(draft.repeat),
                 recipients: draft.recipients,
                 status: 'pending',
                 created_at: getDeviceNow().toISOString(),
@@ -3664,7 +3734,7 @@
             };
             databaseState.reminders = [...getReminders(), reminder];
             queueRemoteSave();
-            addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'}`, 'assistant');
+            addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'} Repeat: ${reminder.repeat === 'none' ? 'ONCE' : reminder.repeat.toUpperCase()}.`, 'assistant');
         }
 
         function confirmReminderDraft(draft) {
@@ -3673,6 +3743,7 @@
                 `Notes: ${draft.body || 'None'}`,
                 `Reminder 1: ${formatReminderDateTime(draft.reminder_datetime)}`,
                 `Reminder 2: ${draft.second_reminder_datetime ? formatReminderDateTime(draft.second_reminder_datetime) : 'None'}`,
+                `Repeat: ${normalizeReminderRepeat(draft.repeat) === 'none' ? 'Once / None' : normalizeReminderRepeat(draft.repeat)}`,
                 `Recipients: ${draft.recipients.join(', ')}`
             ].join('\n');
             pendingQuestions = {
@@ -3710,6 +3781,20 @@
                 const result = resolveReminderRecipients(reply);
                 if (result.error) { addMessage(result.error, 'error'); askReminderRecipient(draft); return; }
                 draft.recipients = result.recipients;
+                askReminderRepeat(draft);
+            });
+        }
+
+        function askReminderRepeat(draft) {
+            setReminderReplyHandler('Should this reminder repeat? Reply ONCE or NONE, DAILY, WEEKLY, or MONTHLY.', reply => {
+                const normalized = reply.trim().toLowerCase().replace(/\s+/g, ' ');
+                const aliases = { once: 'none', none: 'none', 'once/none': 'none', daily: 'daily', weekly: 'weekly', monthly: 'monthly' };
+                if (!aliases[normalized]) {
+                    addMessage('Choose ONCE or NONE, DAILY, WEEKLY, or MONTHLY.', 'error');
+                    askReminderRepeat(draft);
+                    return;
+                }
+                draft.repeat = aliases[normalized];
                 confirmReminderDraft(draft);
             });
         }
@@ -3752,7 +3837,7 @@
         }
 
         function startReminderConversation() {
-            const draft = { subject: '', body: '', reminder_datetime: '', second_reminder_datetime: null, recipients: [] };
+            const draft = { subject: '', body: '', reminder_datetime: '', second_reminder_datetime: null, recipients: [], repeat: 'none' };
             setReminderReplyHandler('What is the subject or gist of the reminder?', reply => {
                 const subject = reply.trim();
                 if (!subject) { addMessage('A reminder subject is required.', 'error'); startReminderConversation(); return; }
@@ -3768,7 +3853,7 @@
         function formatReminderReport() {
             const reminders = getReminders().filter(reminder => reminder.status === 'pending').sort((a, b) => new Date(a.reminder_datetime) - new Date(b.reminder_datetime));
             if (reminders.length === 0) return 'No pending reminders are scheduled.';
-            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — REMINDER 1 ${formatReminderDateTime(reminder.reminder_datetime)} — REMINDER 2 ${reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'NONE'} — ${reminder.recipients.join(', ')}`).join('\n')}`;
+            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — REMINDER 1 ${formatReminderDateTime(reminder.reminder_datetime)} — REMINDER 2 ${reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'NONE'} — REPEAT ${normalizeReminderRepeat(reminder.repeat).toUpperCase()} — ${reminder.recipients.join(', ')}`).join('\n')}`;
         }
 
         function weatherCodeDescription(code) {
@@ -3783,7 +3868,7 @@
             return descriptions[Number(code)] || `Weather code ${code}`;
         }
 
-        async function fetchDailyWeather(locationName) {
+        async function fetchDailyWeather(locationName, temperatureUnit = 'fahrenheit', forecastDays = 1) {
             const geocodeUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
             geocodeUrl.search = new URLSearchParams({ name: locationName, count: '1', language: 'en', format: 'json' });
             const geocodeResponse = await fetch(geocodeUrl);
@@ -3794,7 +3879,8 @@
 
             const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
             forecastUrl.search = new URLSearchParams({
-                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: '1',
+                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: String(Math.min(7, Math.max(1, forecastDays))),
+                temperature_unit: temperatureUnit === 'celsius' ? 'celsius' : 'fahrenheit',
                 current: 'temperature_2m,apparent_temperature,weather_code,precipitation',
                 daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max'
             });
@@ -3809,6 +3895,14 @@
                 high: forecast.daily?.temperature_2m_max?.[0], low: forecast.daily?.temperature_2m_min?.[0],
                 currentPrecipitation: forecast.current?.precipitation, precipitationTotal: forecast.daily?.precipitation_sum?.[0],
                 precipitationProbability: forecast.daily?.precipitation_probability_max?.[0],
+                dailyForecast: (forecast.daily?.time || []).map((date, index) => ({
+                    date,
+                    conditions: weatherCodeDescription(forecast.daily?.weather_code?.[index]),
+                    high: forecast.daily?.temperature_2m_max?.[index],
+                    low: forecast.daily?.temperature_2m_min?.[index],
+                    precipitationTotal: forecast.daily?.precipitation_sum?.[index],
+                    precipitationProbability: forecast.daily?.precipitation_probability_max?.[index]
+                })),
                 units: { temperature: forecast.current_units?.temperature_2m || forecast.daily_units?.temperature_2m_max || '°C', precipitation: forecast.current_units?.precipitation || forecast.daily_units?.precipitation_sum || 'mm' }
             };
         }
@@ -3827,14 +3921,14 @@
             const payload = await response.json();
             const stories = (payload.response?.results || []).map(story => ({
                 id: story.id, title: story.webTitle, publicationTime: story.webPublicationDate, url: story.webUrl,
-                summary: stripHtml(story.fields?.trailText), articleText: stripHtml(story.fields?.bodyText).slice(0, 5000)
+                summary: stripHtml(story.fields?.trailText), articleText: stripHtml(story.fields?.bodyText)
             }));
             if (!stories.length) throw new Error('The Guardian Open Platform returned no world headlines.');
             return { source: 'The Guardian Open Platform', retrievedAt: new Date().toISOString(), stories };
         }
 
         function formatDailyFacts(data, { includeArticleText = false } = {}) {
-            const sections = ['DAILY BRIEFING SOURCE DATA'];
+            const sections = ['DAILY BRIEFING'];
             if (data.weather) {
                 const weather = data.weather;
                 sections.push([
@@ -3848,31 +3942,83 @@
                 ].join('\n'));
             } else sections.push(`WEATHER UNAVAILABLE — ${data.weatherError}`);
             if (data.news) {
-                sections.push(`WORLD NEWS\nSource: ${data.news.source}\nRetrieved: ${new Date(data.news.retrievedAt).toLocaleString()}\n${data.news.stories.map((story, index) => `${index + 1}. ${story.title}\nPublished: ${new Date(story.publicationTime).toLocaleString()}\n${story.summary || 'No synopsis supplied.'}${includeArticleText && story.articleText ? `\nArticle details: ${story.articleText}` : ''}\nURL: ${story.url}`).join('\n\n')}`);
+                sections.push(`WORLD NEWS\nRetrieved: ${new Date(data.news.retrievedAt).toLocaleString()}\n${data.news.stories.map((story, index) => `ARTICLE ${index + 1}\nHeadline: ${story.title}\nSource: ${data.news.source}\nDate: ${new Date(story.publicationTime).toLocaleString()}\nSummary: ${story.summary || 'No synopsis supplied.'}${includeArticleText && story.articleText ? `\nArticle details: ${story.articleText}` : ''}\nURL: ${story.url}`).join('\n\n')}`);
             } else sections.push(`WORLD NEWS UNAVAILABLE — ${data.newsError}`);
             return sections.join('\n\n');
         }
 
-        async function createDailyBriefing() {
+        async function fetchDailyBriefingData() {
             const settings = getDailySettings();
             const [weatherResult, newsResult] = await Promise.allSettled([
-                fetchDailyWeather(settings.location), fetchDailyNews(settings.guardianApiKey)
+                fetchDailyWeather(settings.location, settings.temperatureUnit), fetchDailyNews(settings.guardianApiKey)
             ]);
-            const data = {
+            return {
                 weather: weatherResult.status === 'fulfilled' ? weatherResult.value : null,
                 weatherError: weatherResult.status === 'rejected' ? weatherResult.reason.message : '',
                 news: newsResult.status === 'fulfilled' ? newsResult.value : null,
                 newsError: newsResult.status === 'rejected' ? newsResult.reason.message : ''
             };
-            const facts = formatDailyFacts(data);
-            const modelFacts = formatDailyFacts(data, { includeArticleText: true });
-            try {
-                const payload = await callAI(`Create today's daily briefing from the supplied source data. Include the weather retrieval time, today's conditions, high, low, and precipitation. Include every supplied world headline and its publication time; include at least four when four are supplied. Be factual and complete rather than aggressively concise. Do not use outside knowledge, invent missing details, or include caret characters. Explicitly retain each API-specific unavailable notice. Return no actions.\n\n${modelFacts}`, { apply: false, currentFacts: modelFacts, disableWebSearch: true, maxTokens: 1800 });
-                const summary = String(payload.message || '').replace(/\^/g, '').trim();
-                return { message: summary ? `${summary}\n\n${facts}` : facts };
-            } catch (error) {
-                return { message: `${facts}\n\nAI SUMMARY UNAVAILABLE — ${error.message}` };
+        }
+
+        async function createDailyBriefing() {
+            const data = await fetchDailyBriefingData();
+            latestDailyBriefingData = data;
+            latestDailyFactsContext = formatDailyFacts(data);
+            // The verified API fields are already the complete briefing. Do not ask the
+            // language model to generate a second summary or prepend duplicate content.
+            return { message: formatDailyFacts(data) };
+        }
+
+        async function createPoweredNewsResponse(request) {
+            const data = await fetchDailyBriefingData();
+            latestDailyBriefingData = data;
+            latestDailyFactsContext = formatDailyFacts(data);
+            const response = await callAI(request, { currentFacts: latestDailyFactsContext, maxTokens: 1800, allowPlainText: true });
+            return { message: response, responseRole: 'powered' };
+        }
+
+        async function createPoweredArticleResponse(request, articleNumber) {
+            const story = latestDailyBriefingData?.news?.stories?.[articleNumber - 1];
+            if (!story) {
+                return { message: `Article ${articleNumber} is not available in the latest Daily Briefing. Run “Daily briefing” to refresh the six articles first.`, error: true };
             }
+            const articleContext = [
+                `GUARDIAN ARTICLE ${articleNumber}`,
+                `Headline: ${story.title}`,
+                `Source: The Guardian Open Platform`,
+                `Date: ${new Date(story.publicationTime).toLocaleString()}`,
+                `URL: ${story.url}`,
+                `Full article text supplied for comprehension: ${story.articleText || 'UNAVAILABLE'}`
+            ].join('\n');
+            const response = await callAI(`The Operator requested: ${request}\nProvide a detailed but concise summary or explanation of the selected article. Do not reproduce the full article verbatim. If the full article text is unavailable, say so plainly.`, {
+                currentFacts: articleContext,
+                disableWebSearch: true,
+                maxTokens: 2400,
+                allowPlainText: true
+            });
+            return { message: response, responseRole: 'powered' };
+        }
+
+        async function createPoweredWeatherResponse(request) {
+            const settings = getDailySettings();
+            let weatherContext;
+            try {
+                const forecastDays = /\bthis week\b/i.test(request) ? 7 : /\btomorrow\b/i.test(request) ? 2 : 1;
+                const weather = await fetchDailyWeather(settings.location, settings.temperatureUnit, forecastDays);
+                weatherContext = [
+                    `OPEN-METEO WEATHER DATA — ${weather.location}`,
+                    `Retrieved: ${new Date(weather.retrievedAt).toLocaleString()}`,
+                    `Current conditions: ${weather.conditions}`,
+                    `Current: ${weather.temperature}${weather.units.temperature} (feels like ${weather.apparentTemperature}${weather.units.temperature})`,
+                    'DAILY FORECAST:',
+                    ...weather.dailyForecast.map(day => `${day.date}: ${day.conditions}; high ${day.high}${weather.units.temperature}; low ${day.low}${weather.units.temperature}; precipitation ${day.precipitationTotal}${weather.units.precipitation} (${day.precipitationProbability}% maximum probability)`)
+                ].join('\n');
+            } catch (error) {
+                weatherContext = `WEATHER UNAVAILABLE — ${error.message}`;
+            }
+            latestWeatherFactsContext = weatherContext;
+            const response = await callAI(request, { currentFacts: weatherContext, maxTokens: 1000 });
+            return { message: response, responseRole: 'powered' };
         }
 
         async function handleLocalCommand(text) {
@@ -3886,7 +4032,11 @@
 
             if (/^(?:add|create|schedule|set)(?:\s+(?:a|new))?\s+reminder[.!?]*$/i.test(text.trim())) return startReminderConversation();
             if (/^(?:show|list|view)?\s*(?:my\s+)?reminders[.!?]*$/i.test(text.trim())) return { message: formatReminderReport() };
-            if (/^(?:daily|daily briefing|today's briefing|todays briefing)$/i.test(text.trim())) return createDailyBriefing();
+            if (/^daily briefing[.!?]*$/i.test(text.trim())) return createDailyBriefing();
+            const articleFollowUp = text.trim().match(/^(?:please\s+)?(?:read|expand(?:\s+on)?|summari[sz]e|explain|tell me (?:more )?about|give me (?:more|details) (?:about|on))\s+(?:the\s+)?(?:news\s+)?article\s*(?:number\s*)?(\d+)(?:\s+please)?[.!?]*$/i);
+            if (articleFollowUp) return createPoweredArticleResponse(text, Number(articleFollowUp[1]));
+            if (/^(?:(?:please\s+)?(?:give me\s+)?(?:a\s+)?daily briefing(?:\s+please)?|daily|today's briefing|todays briefing|(?:show|give|tell) me (?:today's |todays )?(?:briefing|headlines|world news)|(?:what(?:'s| is| are) )?(?:today's |todays )?(?:headlines|world news|news articles))[.!?]*$/i.test(text.trim())) return createPoweredNewsResponse(text);
+            if (/^(?:(?:please\s+)?(?:show|give|tell) me\s+)?(?:(?:what(?:'s|s| is| will be)|how(?:'s|s| is))\s+)?(?:the\s+)?(?:weather|forecast|temperature|chance of (?:rain|snow)|will it (?:rain|snow))(?:\s+(?:today|tonight|tomorrow|this week|outside|in .+))?[.!?]*$/i.test(text.trim())) return createPoweredWeatherResponse(text);
 
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
@@ -4391,7 +4541,7 @@
             }
         }
 
-        async function requestAI(userMessage, { apply = true, currentFacts = '', disableWebSearch = false, maxTokens = 700 } = {}) {
+        async function requestAI(userMessage, { apply = true, currentFacts = [latestDailyFactsContext, latestWeatherFactsContext].filter(Boolean).join('\n\n'), disableWebSearch = false, maxTokens = 700, allowPlainText = false } = {}) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();
@@ -4424,7 +4574,12 @@
 
                 if (!response.ok) throw new Error('Local AI connection failed');
                 const data = await response.json();
-                const payload = validateAIResponse(safeParseAIJson(data.message.content));
+                let payload;
+                try { payload = validateAIResponse(safeParseAIJson(data.message.content)); }
+                catch (error) {
+                    if (!allowPlainText || !String(data.message.content || '').trim()) throw error;
+                    payload = { message: String(data.message.content).trim(), actions: [] };
+                }
                 aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
 
@@ -4451,7 +4606,13 @@
                 }
 
                 const data = await response.json();
-                const payload = validateAIResponse(safeParseAIJson(data.choices[0].message.content));
+                const rawContent = data.choices[0].message.content;
+                let payload;
+                try { payload = validateAIResponse(safeParseAIJson(rawContent)); }
+                catch (error) {
+                    if (!allowPlainText || !String(rawContent || '').trim()) throw error;
+                    payload = { message: String(rawContent).trim(), actions: [] };
+                }
                 aiConversation.push({ role: 'user', content: userMessage }, { role: 'assistant', content: JSON.stringify(payload) });
                 return apply ? applyAIResponse(payload) : payload;
             }
