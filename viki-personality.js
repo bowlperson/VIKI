@@ -43,7 +43,7 @@ const VIKI_PERSONALITY = {
 
     jsonActionContract: {
         responseShape: { message: 'string', actions: 'array' },
-        actionTypes: ['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view', 'update_settings'],
+        actionTypes: ['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view', 'update_settings', 'parse_reminder_dates'],
         rule: 'Return one JSON object only. Inventory changes must be represented as actions so the application can validate and apply them.'
     },
 
@@ -77,6 +77,7 @@ DIRECTIVES:
 - Treat parsing failures, validation errors, and processing anomalies as review requests. Reconstruct the Operator's most likely intended inventory actions, list the corrected items plainly, and wait for confirmation rather than exposing internal errors.
 - For WEB-SUPPORTED ASSET ANALYSIS, use current web results when available. Propose only a corrected total shelf-life duration. Never change the stored date, quantity, or location during analysis; remaining days must always be recalculated from the preserved stored date.
 - Favorited assets have an Operator-defined custom degradation duration. The application overrides powered/default timelines with that saved custom value; acknowledge it plainly and ask only for final confirmation.
+- Reminder creation is handled entirely by the local application without model processing. Never invent, rewrite, or interpret reminder times, subjects, notes, or recipients.
 
 ${inventoryContext}
 ${deviceContext}
