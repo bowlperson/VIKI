@@ -3868,7 +3868,7 @@
             return descriptions[Number(code)] || `Weather code ${code}`;
         }
 
-        async function fetchDailyWeather(locationName, temperatureUnit = 'fahrenheit') {
+        async function fetchDailyWeather(locationName, temperatureUnit = 'fahrenheit', forecastDays = 1) {
             const geocodeUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
             geocodeUrl.search = new URLSearchParams({ name: locationName, count: '1', language: 'en', format: 'json' });
             const geocodeResponse = await fetch(geocodeUrl);
@@ -3879,7 +3879,7 @@
 
             const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
             forecastUrl.search = new URLSearchParams({
-                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: '1',
+                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: String(Math.min(7, Math.max(1, forecastDays))),
                 temperature_unit: temperatureUnit === 'celsius' ? 'celsius' : 'fahrenheit',
                 current: 'temperature_2m,apparent_temperature,weather_code,precipitation',
                 daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max'
@@ -3895,6 +3895,14 @@
                 high: forecast.daily?.temperature_2m_max?.[0], low: forecast.daily?.temperature_2m_min?.[0],
                 currentPrecipitation: forecast.current?.precipitation, precipitationTotal: forecast.daily?.precipitation_sum?.[0],
                 precipitationProbability: forecast.daily?.precipitation_probability_max?.[0],
+                dailyForecast: (forecast.daily?.time || []).map((date, index) => ({
+                    date,
+                    conditions: weatherCodeDescription(forecast.daily?.weather_code?.[index]),
+                    high: forecast.daily?.temperature_2m_max?.[index],
+                    low: forecast.daily?.temperature_2m_min?.[index],
+                    precipitationTotal: forecast.daily?.precipitation_sum?.[index],
+                    precipitationProbability: forecast.daily?.precipitation_probability_max?.[index]
+                })),
                 units: { temperature: forecast.current_units?.temperature_2m || forecast.daily_units?.temperature_2m_max || '°C', precipitation: forecast.current_units?.precipitation || forecast.daily_units?.precipitation_sum || 'mm' }
             };
         }
@@ -3995,8 +4003,16 @@
             const settings = getDailySettings();
             let weatherContext;
             try {
-                const weather = await fetchDailyWeather(settings.location, settings.temperatureUnit);
-                weatherContext = formatDailyFacts({ weather, news: null, newsError: 'Not requested.' }).split('\n\nWORLD NEWS UNAVAILABLE')[0];
+                const forecastDays = /\bthis week\b/i.test(request) ? 7 : /\btomorrow\b/i.test(request) ? 2 : 1;
+                const weather = await fetchDailyWeather(settings.location, settings.temperatureUnit, forecastDays);
+                weatherContext = [
+                    `OPEN-METEO WEATHER DATA — ${weather.location}`,
+                    `Retrieved: ${new Date(weather.retrievedAt).toLocaleString()}`,
+                    `Current conditions: ${weather.conditions}`,
+                    `Current: ${weather.temperature}${weather.units.temperature} (feels like ${weather.apparentTemperature}${weather.units.temperature})`,
+                    'DAILY FORECAST:',
+                    ...weather.dailyForecast.map(day => `${day.date}: ${day.conditions}; high ${day.high}${weather.units.temperature}; low ${day.low}${weather.units.temperature}; precipitation ${day.precipitationTotal}${weather.units.precipitation} (${day.precipitationProbability}% maximum probability)`)
+                ].join('\n');
             } catch (error) {
                 weatherContext = `WEATHER UNAVAILABLE — ${error.message}`;
             }
@@ -4020,7 +4036,7 @@
             const articleFollowUp = text.trim().match(/^(?:please\s+)?(?:read|expand(?:\s+on)?|summari[sz]e|explain|tell me (?:more )?about|give me (?:more|details) (?:about|on))\s+(?:the\s+)?(?:news\s+)?article\s*(?:number\s*)?(\d+)(?:\s+please)?[.!?]*$/i);
             if (articleFollowUp) return createPoweredArticleResponse(text, Number(articleFollowUp[1]));
             if (/^(?:(?:please\s+)?(?:give me\s+)?(?:a\s+)?daily briefing(?:\s+please)?|daily|today's briefing|todays briefing|(?:show|give|tell) me (?:today's |todays )?(?:briefing|headlines|world news)|(?:what(?:'s| is| are) )?(?:today's |todays )?(?:headlines|world news|news articles))[.!?]*$/i.test(text.trim())) return createPoweredNewsResponse(text);
-            if (/^(?:(?:please\s+)?(?:show|give|tell) me\s+)?(?:(?:what(?:'s| is| will be)|how(?:'s| is))\s+)?(?:the\s+)?(?:weather|forecast|temperature|chance of (?:rain|snow)|will it (?:rain|snow))(?:\s+(?:today|tonight|tomorrow|this week|outside|in .+))?[.!?]*$/i.test(text.trim())) return createPoweredWeatherResponse(text);
+            if (/^(?:(?:please\s+)?(?:show|give|tell) me\s+)?(?:(?:what(?:'s|s| is| will be)|how(?:'s|s| is))\s+)?(?:the\s+)?(?:weather|forecast|temperature|chance of (?:rain|snow)|will it (?:rain|snow))(?:\s+(?:today|tonight|tomorrow|this week|outside|in .+))?[.!?]*$/i.test(text.trim())) return createPoweredWeatherResponse(text);
 
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
