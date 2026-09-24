@@ -1167,6 +1167,10 @@
                         <input class="config-input" id="weatherLocation" type="text" value="Tucson, Arizona" placeholder="City, state or country">
                     </div>
                     <div class="config-help">Weather and geocoding are retrieved from Open-Meteo. Open-Meteo does not require an API key.</div>
+                    <div class="toggle-row">
+                        <input type="checkbox" id="weatherUseFahrenheit" checked>
+                        <label class="toggle-label" for="weatherUseFahrenheit">USE FAHRENHEIT [OFF = CELSIUS]</label>
+                    </div>
                     <div class="config-row">
                         <label class="config-label" for="guardianApiKey">THE_GUARDIAN_API_KEY</label>
                         <input class="config-input" id="guardianApiKey" type="password" placeholder="Guardian Open Platform key">
@@ -1361,6 +1365,7 @@
         const aiConversation = [];
         const AI_HISTORY_LIMIT = 10;
         let latestDailyFactsContext = '';
+        let latestWeatherFactsContext = '';
         let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
         let supabaseSession = null;
         let syncTimer = null;
@@ -1612,9 +1617,9 @@
 
         function getDailySettings() {
             try {
-                return { location: 'Tucson, Arizona', guardianApiKey: '', ...JSON.parse(localStorage.getItem(DAILY_SETTINGS_KEY) || '{}') };
+                return { location: 'Tucson, Arizona', guardianApiKey: '', temperatureUnit: 'fahrenheit', ...JSON.parse(localStorage.getItem(DAILY_SETTINGS_KEY) || '{}') };
             } catch (error) {
-                return { location: 'Tucson, Arizona', guardianApiKey: '' };
+                return { location: 'Tucson, Arizona', guardianApiKey: '', temperatureUnit: 'fahrenheit' };
             }
         }
 
@@ -1622,12 +1627,14 @@
             const settings = getDailySettings();
             document.getElementById('weatherLocation').value = settings.location;
             document.getElementById('guardianApiKey').value = settings.guardianApiKey;
+            document.getElementById('weatherUseFahrenheit').checked = settings.temperatureUnit !== 'celsius';
         }
 
         function saveDailySettings() {
             const settings = {
                 location: document.getElementById('weatherLocation').value.trim() || 'Tucson, Arizona',
-                guardianApiKey: document.getElementById('guardianApiKey').value.trim()
+                guardianApiKey: document.getElementById('guardianApiKey').value.trim(),
+                temperatureUnit: document.getElementById('weatherUseFahrenheit').checked ? 'fahrenheit' : 'celsius'
             };
             localStorage.setItem(DAILY_SETTINGS_KEY, JSON.stringify(settings));
             document.getElementById('weatherLocation').value = settings.location;
@@ -3860,7 +3867,7 @@
             return descriptions[Number(code)] || `Weather code ${code}`;
         }
 
-        async function fetchDailyWeather(locationName) {
+        async function fetchDailyWeather(locationName, temperatureUnit = 'fahrenheit') {
             const geocodeUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
             geocodeUrl.search = new URLSearchParams({ name: locationName, count: '1', language: 'en', format: 'json' });
             const geocodeResponse = await fetch(geocodeUrl);
@@ -3871,7 +3878,8 @@
 
             const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
             forecastUrl.search = new URLSearchParams({
-                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: '4',
+                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: '1',
+                temperature_unit: temperatureUnit === 'celsius' ? 'celsius' : 'fahrenheit',
                 current: 'temperature_2m,apparent_temperature,weather_code,precipitation',
                 daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max'
             });
@@ -3886,11 +3894,6 @@
                 high: forecast.daily?.temperature_2m_max?.[0], low: forecast.daily?.temperature_2m_min?.[0],
                 currentPrecipitation: forecast.current?.precipitation, precipitationTotal: forecast.daily?.precipitation_sum?.[0],
                 precipitationProbability: forecast.daily?.precipitation_probability_max?.[0],
-                dailyForecast: (forecast.daily?.time || []).map((date, index) => ({
-                    date, conditions: weatherCodeDescription(forecast.daily?.weather_code?.[index]),
-                    high: forecast.daily?.temperature_2m_max?.[index], low: forecast.daily?.temperature_2m_min?.[index],
-                    precipitationTotal: forecast.daily?.precipitation_sum?.[index], precipitationProbability: forecast.daily?.precipitation_probability_max?.[index]
-                })),
                 units: { temperature: forecast.current_units?.temperature_2m || forecast.daily_units?.temperature_2m_max || '°C', precipitation: forecast.current_units?.precipitation || forecast.daily_units?.precipitation_sum || 'mm' }
             };
         }
@@ -3926,9 +3929,7 @@
                     `Conditions: ${weather.conditions}`,
                     `Current: ${weather.temperature}${weather.units.temperature} (feels like ${weather.apparentTemperature}${weather.units.temperature})`,
                     `High: ${weather.high}${weather.units.temperature} | Low: ${weather.low}${weather.units.temperature}`,
-                    `Precipitation: ${weather.currentPrecipitation}${weather.units.precipitation} current; ${weather.precipitationTotal}${weather.units.precipitation} expected today; ${weather.precipitationProbability}% maximum probability`,
-                    'NEXT FEW DAYS:',
-                    ...weather.dailyForecast.map(day => `${day.date}: ${day.conditions}; high ${day.high}${weather.units.temperature}; low ${day.low}${weather.units.temperature}; precipitation ${day.precipitationTotal}${weather.units.precipitation} (${day.precipitationProbability}% maximum probability)`)
+                    `Precipitation: ${weather.currentPrecipitation}${weather.units.precipitation} current; ${weather.precipitationTotal}${weather.units.precipitation} expected today; ${weather.precipitationProbability}% maximum probability`
                 ].join('\n'));
             } else sections.push(`WEATHER UNAVAILABLE — ${data.weatherError}`);
             if (data.news) {
@@ -3940,7 +3941,7 @@
         async function fetchDailyBriefingData() {
             const settings = getDailySettings();
             const [weatherResult, newsResult] = await Promise.allSettled([
-                fetchDailyWeather(settings.location), fetchDailyNews(settings.guardianApiKey)
+                fetchDailyWeather(settings.location, settings.temperatureUnit), fetchDailyNews(settings.guardianApiKey)
             ]);
             return {
                 weather: weatherResult.status === 'fulfilled' ? weatherResult.value : null,
@@ -3965,6 +3966,20 @@
             return { message: response, responseRole: 'powered' };
         }
 
+        async function createPoweredWeatherResponse(request) {
+            const settings = getDailySettings();
+            let weatherContext;
+            try {
+                const weather = await fetchDailyWeather(settings.location, settings.temperatureUnit);
+                weatherContext = formatDailyFacts({ weather, news: null, newsError: 'Not requested.' }).split('\n\nWORLD NEWS UNAVAILABLE')[0];
+            } catch (error) {
+                weatherContext = `WEATHER UNAVAILABLE — ${error.message}`;
+            }
+            latestWeatherFactsContext = weatherContext;
+            const response = await callAI(request, { currentFacts: weatherContext, maxTokens: 1000 });
+            return { message: response, responseRole: 'powered' };
+        }
+
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
 
@@ -3978,6 +3993,7 @@
             if (/^(?:show|list|view)?\s*(?:my\s+)?reminders[.!?]*$/i.test(text.trim())) return { message: formatReminderReport() };
             if (/^daily briefing[.!?]*$/i.test(text.trim())) return createDailyBriefing();
             if (/^(?:(?:please\s+)?(?:give me\s+)?(?:a\s+)?daily briefing(?:\s+please)?|daily|today's briefing|todays briefing|(?:show|give|tell) me (?:today's |todays )?(?:briefing|headlines|world news)|(?:what(?:'s| is| are) )?(?:today's |todays )?(?:headlines|world news|news articles))[.!?]*$/i.test(text.trim())) return createPoweredNewsResponse(text);
+            if (/^(?:(?:please\s+)?(?:show|give|tell) me\s+)?(?:(?:what(?:'s| is| will be)|how(?:'s| is))\s+)?(?:the\s+)?(?:weather|forecast|temperature|chance of (?:rain|snow)|will it (?:rain|snow))(?:\s+(?:today|tonight|tomorrow|this week|outside|in .+))?[.!?]*$/i.test(text.trim())) return createPoweredWeatherResponse(text);
 
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
@@ -4482,7 +4498,7 @@
             }
         }
 
-        async function requestAI(userMessage, { apply = true, currentFacts = latestDailyFactsContext, disableWebSearch = false, maxTokens = 700 } = {}) {
+        async function requestAI(userMessage, { apply = true, currentFacts = [latestDailyFactsContext, latestWeatherFactsContext].filter(Boolean).join('\n\n'), disableWebSearch = false, maxTokens = 700 } = {}) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();
