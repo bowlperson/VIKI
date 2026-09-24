@@ -1805,11 +1805,48 @@
                     }
                 }
                 if (reminder.first_sent_at && (!reminder.second_reminder_datetime || reminder.second_sent_at)) {
-                    reminder.status = 'sent';
+                    if (normalizeReminderRepeat(reminder.repeat) === 'none') reminder.status = 'sent';
+                    else advanceRepeatingReminder(reminder, now);
                     changed = true;
                 }
                 if (changed) queueRemoteSave();
             }
+        }
+
+        function normalizeReminderRepeat(value) {
+            const repeat = String(value || 'none').toLowerCase();
+            return ['daily', 'weekly', 'monthly'].includes(repeat) ? repeat : 'none';
+        }
+
+        function addReminderInterval(value, repeat) {
+            const date = new Date(value);
+            if (repeat === 'daily') date.setUTCDate(date.getUTCDate() + 1);
+            if (repeat === 'weekly') date.setUTCDate(date.getUTCDate() + 7);
+            if (repeat === 'monthly') {
+                const day = date.getUTCDate();
+                date.setUTCDate(1);
+                date.setUTCMonth(date.getUTCMonth() + 1);
+                const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+                date.setUTCDate(Math.min(day, lastDay));
+            }
+            return date;
+        }
+
+        function advanceRepeatingReminder(reminder, now = getReminderNow()) {
+            const repeat = normalizeReminderRepeat(reminder.repeat);
+            if (repeat === 'none') return;
+            let first = new Date(reminder.reminder_datetime);
+            let second = reminder.second_reminder_datetime ? new Date(reminder.second_reminder_datetime) : null;
+            do {
+                first = addReminderInterval(first, repeat);
+                if (second) second = addReminderInterval(second, repeat);
+            } while ((second || first) <= now);
+            reminder.reminder_datetime = first.toISOString();
+            reminder.second_reminder_datetime = second ? second.toISOString() : null;
+            reminder.first_sent_at = null;
+            reminder.second_sent_at = null;
+            reminder.sent_at = null;
+            reminder.status = 'pending';
         }
 
         function isPlainObject(value) {
@@ -1842,6 +1879,7 @@
                 && typeof reminder.reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.reminder_datetime))
                 && (reminder.second_reminder_datetime == null || (typeof reminder.second_reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.second_reminder_datetime))) || (typeof reminder.event_datetime === 'string' && !Number.isNaN(Date.parse(reminder.event_datetime))))
                 && Array.isArray(reminder.recipients) && reminder.recipients.length > 0 && reminder.recipients.every(isValidEmail)
+                && (reminder.repeat == null || ['none', 'daily', 'weekly', 'monthly'].includes(reminder.repeat))
                 && ['pending', 'sent'].includes(reminder.status));
         }
 
@@ -2588,13 +2626,27 @@
                     label.appendChild(input);
                     return label;
                 };
+                const repeatField = document.createElement('label');
+                repeatField.className = 'registry-edit-field';
+                repeatField.textContent = 'REPEAT';
+                const repeatSelect = document.createElement('select');
+                repeatSelect.className = 'registry-field';
+                repeatSelect.dataset.field = 'repeat';
+                [['none', 'ONCE / NONE'], ['daily', 'DAILY'], ['weekly', 'WEEKLY'], ['monthly', 'MONTHLY']].forEach(([value, label]) => {
+                    const option = document.createElement('option');
+                    option.value = value; option.textContent = label;
+                    repeatSelect.appendChild(option);
+                });
+                repeatSelect.value = normalizeReminderRepeat(reminder.repeat);
+                repeatField.appendChild(repeatSelect);
                 const grid = document.createElement('div');
                 grid.className = 'reminder-card-grid';
                 grid.append(
                     field('SUBJECT', 'subject', 'text', reminder.subject),
                     field('RECIPIENT EMAIL(S)', 'recipients', 'text', reminder.recipients.join(', ')),
                     field('REMINDER 1', 'reminder_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.reminder_datetime)),
-                    field('REMINDER 2 (OPTIONAL)', 'second_reminder_datetime', 'datetime-local', reminder.second_reminder_datetime ? formatTucsonDateTimeLocal(reminder.second_reminder_datetime) : '')
+                    field('REMINDER 2 (OPTIONAL)', 'second_reminder_datetime', 'datetime-local', reminder.second_reminder_datetime ? formatTucsonDateTimeLocal(reminder.second_reminder_datetime) : ''),
+                    repeatField
                 );
                 const status = document.createElement('div');
                 status.className = 'reminder-status';
@@ -2635,9 +2687,17 @@
             const sendChanged = reminder.reminder_datetime !== sendAt.toISOString();
             const secondValue = secondAt ? secondAt.toISOString() : null;
             const secondChanged = (reminder.second_reminder_datetime || null) !== secondValue;
-            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), second_reminder_datetime: secondValue });
+            const repeat = normalizeReminderRepeat(value('repeat'));
+            const repeatChanged = normalizeReminderRepeat(reminder.repeat) !== repeat;
+            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), second_reminder_datetime: secondValue, repeat });
             if (sendChanged && sendAt > getReminderNow()) { reminder.status = 'pending'; reminder.first_sent_at = null; reminder.sent_at = null; }
             if (secondChanged) { reminder.second_sent_at = null; if (secondAt) reminder.status = 'pending'; }
+            if (repeatChanged && repeat !== 'none') {
+                reminder.status = 'pending';
+                reminder.first_sent_at = null;
+                reminder.second_sent_at = null;
+                reminder.sent_at = null;
+            }
             queueRemoteSave();
             renderReminderRegistry();
             addMessage(`Reminder updated: ${reminder.subject}.`, 'system');
@@ -3655,6 +3715,7 @@
                 body: draft.body,
                 reminder_datetime: draft.reminder_datetime,
                 second_reminder_datetime: draft.second_reminder_datetime || null,
+                repeat: normalizeReminderRepeat(draft.repeat),
                 recipients: draft.recipients,
                 status: 'pending',
                 created_at: getDeviceNow().toISOString(),
@@ -3664,7 +3725,7 @@
             };
             databaseState.reminders = [...getReminders(), reminder];
             queueRemoteSave();
-            addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'}`, 'assistant');
+            addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'} Repeat: ${reminder.repeat === 'none' ? 'ONCE' : reminder.repeat.toUpperCase()}.`, 'assistant');
         }
 
         function confirmReminderDraft(draft) {
@@ -3673,6 +3734,7 @@
                 `Notes: ${draft.body || 'None'}`,
                 `Reminder 1: ${formatReminderDateTime(draft.reminder_datetime)}`,
                 `Reminder 2: ${draft.second_reminder_datetime ? formatReminderDateTime(draft.second_reminder_datetime) : 'None'}`,
+                `Repeat: ${normalizeReminderRepeat(draft.repeat) === 'none' ? 'Once / None' : normalizeReminderRepeat(draft.repeat)}`,
                 `Recipients: ${draft.recipients.join(', ')}`
             ].join('\n');
             pendingQuestions = {
@@ -3710,6 +3772,20 @@
                 const result = resolveReminderRecipients(reply);
                 if (result.error) { addMessage(result.error, 'error'); askReminderRecipient(draft); return; }
                 draft.recipients = result.recipients;
+                askReminderRepeat(draft);
+            });
+        }
+
+        function askReminderRepeat(draft) {
+            setReminderReplyHandler('Should this reminder repeat? Reply ONCE or NONE, DAILY, WEEKLY, or MONTHLY.', reply => {
+                const normalized = reply.trim().toLowerCase().replace(/\s+/g, ' ');
+                const aliases = { once: 'none', none: 'none', 'once/none': 'none', daily: 'daily', weekly: 'weekly', monthly: 'monthly' };
+                if (!aliases[normalized]) {
+                    addMessage('Choose ONCE or NONE, DAILY, WEEKLY, or MONTHLY.', 'error');
+                    askReminderRepeat(draft);
+                    return;
+                }
+                draft.repeat = aliases[normalized];
                 confirmReminderDraft(draft);
             });
         }
@@ -3752,7 +3828,7 @@
         }
 
         function startReminderConversation() {
-            const draft = { subject: '', body: '', reminder_datetime: '', second_reminder_datetime: null, recipients: [] };
+            const draft = { subject: '', body: '', reminder_datetime: '', second_reminder_datetime: null, recipients: [], repeat: 'none' };
             setReminderReplyHandler('What is the subject or gist of the reminder?', reply => {
                 const subject = reply.trim();
                 if (!subject) { addMessage('A reminder subject is required.', 'error'); startReminderConversation(); return; }
@@ -3768,7 +3844,7 @@
         function formatReminderReport() {
             const reminders = getReminders().filter(reminder => reminder.status === 'pending').sort((a, b) => new Date(a.reminder_datetime) - new Date(b.reminder_datetime));
             if (reminders.length === 0) return 'No pending reminders are scheduled.';
-            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — REMINDER 1 ${formatReminderDateTime(reminder.reminder_datetime)} — REMINDER 2 ${reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'NONE'} — ${reminder.recipients.join(', ')}`).join('\n')}`;
+            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — REMINDER 1 ${formatReminderDateTime(reminder.reminder_datetime)} — REMINDER 2 ${reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'NONE'} — REPEAT ${normalizeReminderRepeat(reminder.repeat).toUpperCase()} — ${reminder.recipients.join(', ')}`).join('\n')}`;
         }
 
         function weatherCodeDescription(code) {
@@ -3794,7 +3870,7 @@
 
             const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
             forecastUrl.search = new URLSearchParams({
-                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: '1',
+                latitude: String(place.latitude), longitude: String(place.longitude), timezone: 'auto', forecast_days: '4',
                 current: 'temperature_2m,apparent_temperature,weather_code,precipitation',
                 daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max'
             });
@@ -3809,6 +3885,11 @@
                 high: forecast.daily?.temperature_2m_max?.[0], low: forecast.daily?.temperature_2m_min?.[0],
                 currentPrecipitation: forecast.current?.precipitation, precipitationTotal: forecast.daily?.precipitation_sum?.[0],
                 precipitationProbability: forecast.daily?.precipitation_probability_max?.[0],
+                dailyForecast: (forecast.daily?.time || []).map((date, index) => ({
+                    date, conditions: weatherCodeDescription(forecast.daily?.weather_code?.[index]),
+                    high: forecast.daily?.temperature_2m_max?.[index], low: forecast.daily?.temperature_2m_min?.[index],
+                    precipitationTotal: forecast.daily?.precipitation_sum?.[index], precipitationProbability: forecast.daily?.precipitation_probability_max?.[index]
+                })),
                 units: { temperature: forecast.current_units?.temperature_2m || forecast.daily_units?.temperature_2m_max || '°C', precipitation: forecast.current_units?.precipitation || forecast.daily_units?.precipitation_sum || 'mm' }
             };
         }
@@ -3844,11 +3925,13 @@
                     `Conditions: ${weather.conditions}`,
                     `Current: ${weather.temperature}${weather.units.temperature} (feels like ${weather.apparentTemperature}${weather.units.temperature})`,
                     `High: ${weather.high}${weather.units.temperature} | Low: ${weather.low}${weather.units.temperature}`,
-                    `Precipitation: ${weather.currentPrecipitation}${weather.units.precipitation} current; ${weather.precipitationTotal}${weather.units.precipitation} expected today; ${weather.precipitationProbability}% maximum probability`
+                    `Precipitation: ${weather.currentPrecipitation}${weather.units.precipitation} current; ${weather.precipitationTotal}${weather.units.precipitation} expected today; ${weather.precipitationProbability}% maximum probability`,
+                    'NEXT FEW DAYS:',
+                    ...weather.dailyForecast.map(day => `${day.date}: ${day.conditions}; high ${day.high}${weather.units.temperature}; low ${day.low}${weather.units.temperature}; precipitation ${day.precipitationTotal}${weather.units.precipitation} (${day.precipitationProbability}% maximum probability)`)
                 ].join('\n'));
             } else sections.push(`WEATHER UNAVAILABLE — ${data.weatherError}`);
             if (data.news) {
-                sections.push(`WORLD NEWS\nSource: ${data.news.source}\nRetrieved: ${new Date(data.news.retrievedAt).toLocaleString()}\n${data.news.stories.map((story, index) => `${index + 1}. ${story.title}\nPublished: ${new Date(story.publicationTime).toLocaleString()}\n${story.summary || 'No synopsis supplied.'}${includeArticleText && story.articleText ? `\nArticle details: ${story.articleText}` : ''}\nURL: ${story.url}`).join('\n\n')}`);
+                sections.push(`WORLD NEWS\nRetrieved: ${new Date(data.news.retrievedAt).toLocaleString()}\n${data.news.stories.map((story, index) => `ARTICLE ${index + 1}\nHeadline: ${story.title}\nSource: ${data.news.source}\nDate: ${new Date(story.publicationTime).toLocaleString()}\nSummary: ${story.summary || 'No synopsis supplied.'}${includeArticleText && story.articleText ? `\nArticle details: ${story.articleText}` : ''}\nURL: ${story.url}`).join('\n\n')}`);
             } else sections.push(`WORLD NEWS UNAVAILABLE — ${data.newsError}`);
             return sections.join('\n\n');
         }
@@ -3867,7 +3950,7 @@
             const facts = formatDailyFacts(data);
             const modelFacts = formatDailyFacts(data, { includeArticleText: true });
             try {
-                const payload = await callAI(`Create today's daily briefing from the supplied source data. Include the weather retrieval time, today's conditions, high, low, and precipitation. Include every supplied world headline and its publication time; include at least four when four are supplied. Be factual and complete rather than aggressively concise. Do not use outside knowledge, invent missing details, or include caret characters. Explicitly retain each API-specific unavailable notice. Return no actions.\n\n${modelFacts}`, { apply: false, currentFacts: modelFacts, disableWebSearch: true, maxTokens: 1800 });
+                const payload = await callAI(`Create today's daily briefing from the supplied source data. Relay the weather first, including its retrieval time, current conditions, and the forecast for each of the next few supplied days with highs, lows, and precipitation. Then cover all six supplied news articles individually. For each article, use a separate clearly numbered block in exactly this order: Headline, Source, Date, Summary. Never combine or omit articles. Be factual and complete rather than aggressively concise. Do not use outside knowledge, invent missing details, or include caret characters. Explicitly retain each API-specific unavailable notice. Return no actions.\n\n${modelFacts}`, { apply: false, currentFacts: modelFacts, disableWebSearch: true, maxTokens: 2400 });
                 const summary = String(payload.message || '').replace(/\^/g, '').trim();
                 return { message: summary ? `${summary}\n\n${facts}` : facts };
             } catch (error) {
