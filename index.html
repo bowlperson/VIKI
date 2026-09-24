@@ -1360,6 +1360,7 @@
         let availableSpeechVoices = [];
         const aiConversation = [];
         const AI_HISTORY_LIMIT = 10;
+        let latestDailyFactsContext = '';
         let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
         let supabaseSession = null;
         let syncTimer = null;
@@ -3309,7 +3310,7 @@
                     return;
                 }
                 showTyping(false);
-                addMessage(localResponse.message, localResponse.error ? 'error' : 'assistant');
+                addMessage(localResponse.message, localResponse.error ? 'error' : (localResponse.responseRole || 'assistant'));
                 return;
             }
 
@@ -3914,7 +3915,7 @@
             return { source: 'The Guardian Open Platform', retrievedAt: new Date().toISOString(), stories };
         }
 
-        function formatDailyFacts(data) {
+        function formatDailyFacts(data, { includeArticleText = false } = {}) {
             const sections = ['DAILY BRIEFING'];
             if (data.weather) {
                 const weather = data.weather;
@@ -3931,25 +3932,37 @@
                 ].join('\n'));
             } else sections.push(`WEATHER UNAVAILABLE — ${data.weatherError}`);
             if (data.news) {
-                sections.push(`WORLD NEWS\nRetrieved: ${new Date(data.news.retrievedAt).toLocaleString()}\n${data.news.stories.map((story, index) => `ARTICLE ${index + 1}\nHeadline: ${story.title}\nSource: ${data.news.source}\nDate: ${new Date(story.publicationTime).toLocaleString()}\nSummary: ${story.summary || 'No synopsis supplied.'}\nURL: ${story.url}`).join('\n\n')}`);
+                sections.push(`WORLD NEWS\nRetrieved: ${new Date(data.news.retrievedAt).toLocaleString()}\n${data.news.stories.map((story, index) => `ARTICLE ${index + 1}\nHeadline: ${story.title}\nSource: ${data.news.source}\nDate: ${new Date(story.publicationTime).toLocaleString()}\nSummary: ${story.summary || 'No synopsis supplied.'}${includeArticleText && story.articleText ? `\nArticle details: ${story.articleText}` : ''}\nURL: ${story.url}`).join('\n\n')}`);
             } else sections.push(`WORLD NEWS UNAVAILABLE — ${data.newsError}`);
             return sections.join('\n\n');
         }
 
-        async function createDailyBriefing() {
+        async function fetchDailyBriefingData() {
             const settings = getDailySettings();
             const [weatherResult, newsResult] = await Promise.allSettled([
                 fetchDailyWeather(settings.location), fetchDailyNews(settings.guardianApiKey)
             ]);
-            const data = {
+            return {
                 weather: weatherResult.status === 'fulfilled' ? weatherResult.value : null,
                 weatherError: weatherResult.status === 'rejected' ? weatherResult.reason.message : '',
                 news: newsResult.status === 'fulfilled' ? newsResult.value : null,
                 newsError: newsResult.status === 'rejected' ? newsResult.reason.message : ''
             };
+        }
+
+        async function createDailyBriefing() {
+            const data = await fetchDailyBriefingData();
+            latestDailyFactsContext = formatDailyFacts(data, { includeArticleText: true });
             // The verified API fields are already the complete briefing. Do not ask the
             // language model to generate a second summary or prepend duplicate content.
             return { message: formatDailyFacts(data) };
+        }
+
+        async function createPoweredNewsResponse(request) {
+            const data = await fetchDailyBriefingData();
+            latestDailyFactsContext = formatDailyFacts(data, { includeArticleText: true });
+            const response = await callAI(request, { currentFacts: latestDailyFactsContext, maxTokens: 1800 });
+            return { message: response, responseRole: 'powered' };
         }
 
         async function handleLocalCommand(text) {
@@ -3963,7 +3976,8 @@
 
             if (/^(?:add|create|schedule|set)(?:\s+(?:a|new))?\s+reminder[.!?]*$/i.test(text.trim())) return startReminderConversation();
             if (/^(?:show|list|view)?\s*(?:my\s+)?reminders[.!?]*$/i.test(text.trim())) return { message: formatReminderReport() };
-            if (/^(?:daily|daily briefing|today's briefing|todays briefing)$/i.test(text.trim())) return createDailyBriefing();
+            if (/^daily briefing[.!?]*$/i.test(text.trim())) return createDailyBriefing();
+            if (/^(?:(?:please\s+)?(?:give me\s+)?(?:a\s+)?daily briefing(?:\s+please)?|daily|today's briefing|todays briefing|(?:show|give|tell) me (?:today's |todays )?(?:briefing|headlines|world news)|(?:what(?:'s| is| are) )?(?:today's |todays )?(?:headlines|world news|news articles))[.!?]*$/i.test(text.trim())) return createPoweredNewsResponse(text);
 
             const batchAdds = parseBatchAddCommands(text);
             if (batchAdds) {
@@ -4468,7 +4482,7 @@
             }
         }
 
-        async function requestAI(userMessage, { apply = true, currentFacts = '', disableWebSearch = false, maxTokens = 700 } = {}) {
+        async function requestAI(userMessage, { apply = true, currentFacts = latestDailyFactsContext, disableWebSearch = false, maxTokens = 700 } = {}) {
             const apiKey = getApiKey();
             const model = document.getElementById('modelSelect').value;
             const useLocal = isUsingLocalAI();
