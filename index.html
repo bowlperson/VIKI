@@ -354,7 +354,6 @@
             border-left: 3px solid var(--accent-dim);
             padding: 10px 12px;
             margin-bottom: 6px;
-            cursor: pointer;
             transition: all 0.2s;
         }
 
@@ -1046,10 +1045,10 @@
                     <button type="button" class="config-button registry-edit-action" id="exportRegistryButton">EXPORT</button>
                 </div>
             </div>
-            <button type="button" class="collapsible-heading" id="filterCollapseButton" aria-expanded="true" aria-controls="filterContent">
+            <button type="button" class="collapsible-heading" id="filterCollapseButton" aria-expanded="false" aria-controls="filterContent">
                 <span>SEARCH_ASSETS // FILTERS</span><span class="collapse-arrow" aria-hidden="true">▼</span>
             </button>
-            <div class="filter-content" id="filterContent">
+            <div class="filter-content" id="filterContent" hidden>
                 <div class="filter-tabs">
                     <div class="filter-tab active" data-filter="all">ALL</div>
                     <div class="filter-tab" data-filter="fridge">FRIDGE</div>
@@ -2515,8 +2514,6 @@
                 inventoryItem.classList.add('inventory-item');
                 inventoryItem.dataset.itemId = item.id;
                 if (itemClass) inventoryItem.classList.add(itemClass);
-                if (!registryEditMode) inventoryItem.addEventListener('click', () => quickMessage(`Analyze ${item.name}`));
-
                 if (registryEditMode) {
                     const editor = document.createElement('div');
                     editor.className = 'registry-editor';

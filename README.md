@@ -23,7 +23,7 @@ VIKI derives the current date and time from the browser device with `new Date()`
 
 ## Filters and sorting
 
-Use the arrow beside **Search assets // Filters** to minimize or restore the complete search and filter area without clearing the active view.
+The **Search assets // Filters** area starts closed. Use its arrow to show or hide the complete search and filter area without clearing the active view.
 
 The asset registry can be filtered by:
 
@@ -84,7 +84,7 @@ Unit-removal phrases such as `remove 3 eggs`, `used 3 eggs`, `tossed 3 eggs`, an
 
 When an item has no preset/tag match, VIKI automatically uses the configured powered service to determine its location, category, and shelf life. It saves that result as a new preset and then asks for final confirmation; there is no POWERED-versus-DEFAULT question. If powered inference is disabled or unavailable, VIKI asks how many shelf-life days to use, saves the answer as a reusable preset, and then presents the final addition review. In a batch, known items retain their presets while this process runs only for missing items.
 
-Use `analyze ITEM` (or select an inventory card) for a web-supported shelf-life review. If current sources suggest that the stored total timeline is wrong, VIKI shows the current and proposed timelines and their calculated days remaining, then waits for confirmation. Analysis can update only `shelfLife`; it explicitly preserves `addedDate`, quantity, and location.
+Use `analyze ITEM` for a web-supported shelf-life review. Inventory cards do not trigger analysis when selected. If current sources suggest that the stored total timeline is wrong, VIKI shows the current and proposed timelines and their calculated days remaining, then waits for confirmation. Analysis can update only `shelfLife`; it explicitly preserves `addedDate`, quantity, and location.
 
 VIKI remains the conversational identity when a request needs model-powered interpretation. During that processing the header and response label display `VIKI [POWERED]`, without presenting a separate assistant persona. Approximate commands can be resolved with a natural “Did you mean…?” question and confirmed by replying `yes`. Common variants such as `delete everything`, `remove all items`, `clear the whole inventory`, and `wipe all assets` request a full registry clear and always require confirmation before any data is removed.
 
