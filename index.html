@@ -927,10 +927,27 @@
                 align-items: center;
                 justify-content: center;
                 min-height: 52px;
-                padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+                padding: max(8px, env(safe-area-inset-top)) 84px 8px;
+                position: relative;
             }
             .header-left { justify-content: center; min-width: 0; width: 100%; }
-            .logo, .system-status, .subtitle-designation--desktop { display: none; }
+            .subtitle-designation--desktop { display: none; }
+            .logo {
+                cursor: pointer;
+                min-height: 36px;
+                padding: 6px 4px 6px 10px;
+                position: absolute;
+                right: 10px;
+                top: max(8px, env(safe-area-inset-top));
+            }
+            .logo::after {
+                color: var(--accent-dim);
+                content: ' \25BC';
+                font-size: 0.65rem;
+                letter-spacing: 0;
+            }
+            .logo[aria-expanded="true"]::after { color: var(--accent-cyan); content: ' \25B2'; }
+            .logo:focus-visible { outline: 1px dashed var(--accent-cyan); outline-offset: 2px; }
             .subtitle {
                 color: var(--accent-dim);
                 font-size: 0.72rem;
@@ -939,7 +956,14 @@
                 white-space: nowrap;
             }
             .operators-easter-egg { color: var(--accent-dim); font-size: inherit; white-space: nowrap; }
-            .mobile-system-label { cursor: pointer; }
+            .system-status {
+                display: block;
+                left: 10px;
+                position: absolute;
+                top: max(8px, env(safe-area-inset-top));
+            }
+            .system-status .status-item, #installAppButton { display: none; }
+            .header-button { min-height: 36px; padding: 8px; }
             .container { flex-direction: column; min-height: 0; overflow: hidden; }
             .sidebar {
                 width: 100%;
@@ -991,7 +1015,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span class="mobile-system-label" id="mobileRegistryToggle" role="button" tabindex="0" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry"> SYSTEM</span></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1382,14 +1406,11 @@
             const isMobile = mobileLayoutQuery.matches;
             const hidden = isMobile && !mobileRegistryVisible;
             const logo = document.getElementById('vikiLogo');
-            const mobileToggle = document.getElementById('mobileRegistryToggle');
             document.body.classList.toggle('mobile-registry-hidden', hidden);
             logo.setAttribute('aria-expanded', String(!hidden));
             logo.setAttribute('aria-label', isMobile
                 ? `${hidden ? 'Show' : 'Hide'} asset and reminder registry`
                 : 'VIKI home');
-            mobileToggle.setAttribute('aria-expanded', String(!hidden));
-            mobileToggle.setAttribute('aria-label', `${hidden ? 'Show' : 'Hide'} asset and reminder registry`);
         }
 
         function toggleMobileRegistry() {
@@ -4670,13 +4691,6 @@
         document.getElementById('exportRegistryButton').addEventListener('click', exportData);
         document.getElementById('registryLockButton').addEventListener('click', () => setRegistryEditMode(!registryEditMode));
         document.getElementById('vikiLogo').addEventListener('click', toggleMobileRegistry);
-        document.getElementById('mobileRegistryToggle').addEventListener('click', toggleMobileRegistry);
-        document.getElementById('mobileRegistryToggle').addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                toggleMobileRegistry();
-            }
-        });
         document.getElementById('registryTitleButton').addEventListener('click', () => setRegistryView(registryView === 'assets' ? 'reminders' : 'assets'));
         document.getElementById('saveRegistryButton').addEventListener('click', saveManualRegistry);
         document.getElementById('saveEmailSettingsButton').addEventListener('click', saveEmailSettings);
