@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0a0a0c">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -29,6 +29,10 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        button, a, input, select, textarea {
+            touch-action: manipulation;
         }
 
         body {
@@ -542,6 +546,9 @@
             background: rgba(5, 5, 7, 0.98);
             overflow-y: auto;
             padding: 28px;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-y: contain;
+            touch-action: pan-y;
         }
 
         .settings-page[hidden] { display: none; }
@@ -615,6 +622,8 @@
             padding: 16px;
             font-size: 0.9rem;
             line-height: 1.6;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
         }
 
         .terminal-output::-webkit-scrollbar {
@@ -916,16 +925,20 @@
             body { min-height: 100dvh; height: 100dvh; }
             .header {
                 align-items: center;
-                gap: 8px;
+                justify-content: center;
                 min-height: 52px;
-                padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+                padding: max(8px, env(safe-area-inset-top)) 84px 8px;
+                position: relative;
             }
-            .header-left { min-width: 0; order: 2; margin-left: auto; }
+            .header-left { justify-content: center; min-width: 0; width: 100%; }
+            .subtitle-designation--desktop { display: none; }
             .logo {
                 cursor: pointer;
                 min-height: 36px;
                 padding: 6px 4px 6px 10px;
-                touch-action: manipulation;
+                position: absolute;
+                right: 10px;
+                top: max(8px, env(safe-area-inset-top));
             }
             .logo::after {
                 color: var(--accent-dim);
@@ -933,13 +946,23 @@
                 font-size: 0.65rem;
                 letter-spacing: 0;
             }
-            .logo[aria-expanded="true"]::after { content: ' \25B2'; color: var(--accent-cyan); }
+            .logo[aria-expanded="true"]::after { color: var(--accent-cyan); content: ' \25B2'; }
             .logo:focus-visible { outline: 1px dashed var(--accent-cyan); outline-offset: 2px; }
-            .subtitle { font-size: 0; }
-            .subtitle-designation { display: none; }
-            .operators-easter-egg { font-size: 0.62rem; white-space: nowrap; }
-            .system-status { gap: 6px; justify-content: flex-start; min-width: 0; }
-            .system-status .status-item { display: none; }
+            .subtitle {
+                color: var(--accent-dim);
+                font-size: 0.72rem;
+                letter-spacing: 1px;
+                text-align: center;
+                white-space: nowrap;
+            }
+            .operators-easter-egg { color: var(--accent-dim); font-size: inherit; white-space: nowrap; }
+            .system-status {
+                display: block;
+                left: 10px;
+                position: absolute;
+                top: max(8px, env(safe-area-inset-top));
+            }
+            .system-status .status-item, #installAppButton { display: none; }
             .header-button { min-height: 36px; padding: 8px; }
             .container { flex-direction: column; min-height: 0; overflow: hidden; }
             .sidebar {
@@ -951,9 +974,15 @@
                 overflow: hidden;
             }
             body.mobile-registry-hidden .sidebar { display: none; }
+            body:not(.mobile-registry-hidden) .main-content { display: none; }
             .main-content { flex: 1 1 auto; min-height: 0; }
             .terminal-output { padding: 12px 10px; font-size: 0.84rem; line-height: 1.5; }
-            .inventory-list { min-height: 0; }
+            .inventory-list {
+                min-height: 0;
+                -webkit-overflow-scrolling: touch;
+                overscroll-behavior-y: contain;
+                touch-action: pan-y;
+            }
             .sidebar-header { padding: 10px; }
             .filter-tabs { overflow-x: auto; }
             .filter-tab { min-height: 38px; min-width: max-content; }
@@ -974,7 +1003,6 @@
             .settings-header .header-button { width: 100%; }
             .settings-page { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
             body.registry-edit-mode .sidebar { display: flex; }
-            body.registry-edit-mode .logo { visibility: hidden; }
         }
 
     </style>
@@ -987,7 +1015,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna" title="Abel &amp; Anna">ABEL &amp; ANNA</button><span class="subtitle-designation"> SYSTEM</span></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1387,10 +1415,9 @@
 
         function toggleMobileRegistry() {
             if (!mobileLayoutQuery.matches || registryEditMode) return;
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
             mobileRegistryVisible = !mobileRegistryVisible;
             syncMobileRegistryLayout();
-            if (mobileRegistryVisible) document.getElementById('registryTitleButton').focus();
-            else document.getElementById('messageInput').focus();
         }
 
         function getReminderNow() {
