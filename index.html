@@ -100,6 +100,17 @@
         .subtitle {
             color: var(--accent-dim);
             font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .money-indicator {
+            color: var(--accent-cyan);
+            border: 1px solid var(--border-color);
+            background: #111113;
+            padding: 3px 7px;
+            white-space: nowrap;
         }
 
         .operators-easter-egg {
@@ -362,18 +373,10 @@
             border-color: var(--accent-amber);
         }
 
-        .inventory-item.expiring {
-            border-left-color: var(--accent-amber);
-        }
-
-        .inventory-item.expired {
-            border-left-color: var(--accent-red);
-            opacity: 0.6;
-        }
-
-        .inventory-item.fresh {
-            border-left-color: var(--accent-cyan);
-        }
+        .inventory-item.location-fridge { border-left-color: var(--fridge); }
+        .inventory-item.location-freezer { border-left-color: var(--freezer); }
+        .inventory-item.location-cupboard { border-left-color: var(--cupboard); }
+        .inventory-item.expired { opacity: 0.6; }
 
         .item-header {
             display: flex;
@@ -1014,17 +1017,9 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.13.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
         </div>
         <div class="system-status">
-            <div class="status-item">
-                <div class="status-indicator active" id="sysStatus"></div>
-                <span>SYSTEM</span>
-            </div>
-            <div class="status-item">
-                <div class="status-indicator" id="aiStatus"></div>
-                <span id="aiStatusText">STANDBY</span>
-            </div>
             <div class="status-item">
                 <div class="status-indicator active"></div>
                 <span id="deviceDateTime">TIME_SYNC_PENDING</span>
@@ -1293,6 +1288,14 @@
                     <div class="config-actions"><button type="button" class="config-button" id="connectSupabaseButton">CONNECT_AND_SYNC</button><button type="button" class="config-button" id="disconnectSupabaseButton">DISCONNECT</button></div>
                 </section>
                 <section class="settings-section">
+                    <div class="config-title">// CASH PROFILES</div>
+                    <div class="config-row"><label class="config-label" for="newCashProfileName">CREATE_PROFILE</label><input class="config-input" id="newCashProfileName" type="text" maxlength="40" placeholder="PROFILE NAME" disabled></div>
+                    <div class="config-actions"><button type="button" class="config-button" id="createCashProfileButton" disabled>CREATE</button></div>
+                    <div class="config-row"><label class="config-label" for="cashProfileSelect">SELECT_PROFILE</label><select class="config-select" id="cashProfileSelect" disabled><option value="">NO PROFILE</option></select></div>
+                    <div class="config-help" id="cashProfileStatus">Connect to Supabase to access cash profiles. A saved profile earns $250 for every asset or reminder added.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="saveCashProfileButton" disabled>SAVE_PROFILE</button></div>
+                </section>
+                <section class="settings-section">
                     <div class="config-title">// DATA MANAGEMENT</div>
                     <div class="config-actions">
                         <button type="button" class="config-button" id="exportDataButton">EXPORT_DATA</button>
@@ -1344,6 +1347,7 @@
         const NO_LLM_KEY = 'viki_no_llm';
         const SUPABASE_CONFIG_KEY = 'viki_supabase_config';
         const SUPABASE_SESSION_KEY = 'viki_supabase_session';
+        const CASH_PROFILE_KEY = 'viki_cash_profile';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local', 'viki_no_llm'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -1397,6 +1401,7 @@
         let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
         let supabaseSession = null;
         let syncTimer = null;
+        let cashProfiles = [];
         let reminderClockOffsetMs = 0;
         const mobileLayoutQuery = window.matchMedia('(max-width: 780px)');
         let mobileRegistryVisible = false;
@@ -1486,7 +1491,107 @@
             if (rows[0]?.state) databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], ...rows[0].state };
             else await persistRemoteState();
             setSupabaseStatus(`Connected as ${supabaseSession.user.email}. Remote registry synchronized.`);
+            await loadCashProfiles();
             return true;
+        }
+
+        function formatCash(value) {
+            return `$${Math.max(0, Number(value) || 0).toLocaleString('en-US')}`;
+        }
+
+        function setMoneyIndicator(value = 0) {
+            document.getElementById('moneyIndicator').textContent = formatCash(value);
+        }
+
+        function setCashControlsEnabled(enabled) {
+            ['newCashProfileName', 'createCashProfileButton', 'cashProfileSelect', 'saveCashProfileButton'].forEach(id => {
+                document.getElementById(id).disabled = !enabled;
+            });
+        }
+
+        function renderCashProfiles() {
+            const select = document.getElementById('cashProfileSelect');
+            const savedId = localStorage.getItem(CASH_PROFILE_KEY) || '';
+            select.replaceChildren(new Option('NO PROFILE', ''));
+            cashProfiles.forEach(profile => select.add(new Option(profile.name, profile.id)));
+            select.value = cashProfiles.some(profile => profile.id === savedId) ? savedId : '';
+            const active = cashProfiles.find(profile => profile.id === select.value);
+            setMoneyIndicator(active?.balance || 0);
+            document.getElementById('cashProfileStatus').textContent = active
+                ? `${active.name} selected. Save to remember this profile in this browser.`
+                : 'Select a profile, then save it in this browser to activate cash earnings.';
+        }
+
+        async function loadCashProfiles() {
+            if (!supabaseSession?.user?.id) return;
+            cashProfiles = await supabaseRequest(`/rest/v1/viki_cash_profiles?owner_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=id,name,balance&order=name.asc`);
+            setCashControlsEnabled(true);
+            renderCashProfiles();
+        }
+
+        async function createCashProfile() {
+            if (!supabaseSession?.user?.id) return;
+            const input = document.getElementById('newCashProfileName');
+            const name = input.value.trim();
+            if (!name) { document.getElementById('cashProfileStatus').textContent = 'Enter a profile name.'; return; }
+            try {
+                await supabaseRequest('/rest/v1/viki_cash_profiles', {
+                    method: 'POST', headers: { Prefer: 'return=minimal' },
+                    body: JSON.stringify({ owner_id: supabaseSession.user.id, name, balance: 0 })
+                });
+                input.value = '';
+                await loadCashProfiles();
+                const created = cashProfiles.find(profile => profile.name.toLowerCase() === name.toLowerCase());
+                if (created) { document.getElementById('cashProfileSelect').value = created.id; setMoneyIndicator(created.balance); }
+                document.getElementById('cashProfileStatus').textContent = `${name} created. Select and save the profile to activate earnings.`;
+            } catch (error) { document.getElementById('cashProfileStatus').textContent = error.message; }
+        }
+
+        async function previewCashProfile() {
+            const id = document.getElementById('cashProfileSelect').value;
+            let profile = cashProfiles.find(entry => entry.id === id);
+            if (profile && supabaseSession?.user?.id) {
+                try {
+                    const rows = await supabaseRequest(`/rest/v1/viki_cash_profiles?id=eq.${encodeURIComponent(id)}&select=id,name,balance`);
+                    if (rows[0]) {
+                        profile = rows[0];
+                        cashProfiles = cashProfiles.map(entry => entry.id === id ? profile : entry);
+                    }
+                } catch (error) {
+                    document.getElementById('cashProfileStatus').textContent = error.message;
+                    return;
+                }
+            }
+            setMoneyIndicator(profile?.balance || 0);
+            document.getElementById('cashProfileStatus').textContent = profile
+                ? `${profile.name}: ${formatCash(profile.balance)}. Save to use this profile.`
+                : 'No profile selected. Cash earnings are inactive.';
+        }
+
+        function saveCashProfile() {
+            const id = document.getElementById('cashProfileSelect').value;
+            if (id) localStorage.setItem(CASH_PROFILE_KEY, id);
+            else localStorage.removeItem(CASH_PROFILE_KEY);
+            const profile = cashProfiles.find(entry => entry.id === id);
+            setMoneyIndicator(profile?.balance || 0);
+            document.getElementById('cashProfileStatus').textContent = profile
+                ? `${profile.name} saved in this browser. Cash earnings are active.`
+                : 'Saved profile cleared. Cash earnings are inactive.';
+        }
+
+        async function earnCashForRegistryAddition() {
+            const profileId = localStorage.getItem(CASH_PROFILE_KEY);
+            if (!profileId || !supabaseSession?.user?.id || !cashProfiles.some(profile => profile.id === profileId)) return;
+            try {
+                const balance = await supabaseRequest('/rest/v1/rpc/increment_viki_cash', {
+                    method: 'POST', body: JSON.stringify({ profile_id: profileId, amount: 250 })
+                });
+                const profile = cashProfiles.find(entry => entry.id === profileId);
+                if (profile) profile.balance = Number(balance);
+                setMoneyIndicator(balance);
+            } catch (error) {
+                document.getElementById('cashProfileStatus').textContent = `Cash reward was not applied: ${error.message}`;
+            }
         }
 
         async function persistRemoteState() {
@@ -1523,6 +1628,10 @@
             supabaseSession = null;
             localStorage.removeItem(SUPABASE_SESSION_KEY);
             databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
+            cashProfiles = [];
+            setCashControlsEnabled(false);
+            document.getElementById('cashProfileSelect').replaceChildren(new Option('NO PROFILE', ''));
+            setMoneyIndicator(0);
             renderInventory(); renderSortingRules();
             setSupabaseStatus('Disconnected. Connect to load or save registry data.', true);
         }
@@ -2135,6 +2244,8 @@
             const aiStatus = document.getElementById('aiStatus');
             const aiStatusText = document.getElementById('aiStatusText');
 
+            if (!aiStatus || !aiStatusText) return;
+
             if (isLLMDisabled()) {
                 aiStatus.classList.remove('active');
                 aiStatusText.textContent = 'NO_LLM';
@@ -2211,6 +2322,7 @@
             }
 
             saveInventory(items);
+            void earnCashForRegistryAddition();
             return {
                 message: `Added ${quantity} ${unit || 'unit'}(s) of ${normalizedName} to ${finalLocation} registry.`,
                 details: { name: normalizedName, quantity, unit: unit || 'unit', note: note || '', location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, addedDate: receivedAt.toISOString(), daysLeft: Math.ceil(((receivedAt.getTime() + finalShelfLife * MS_PER_DAY) - getDeviceNow()) / MS_PER_DAY) }
@@ -2512,6 +2624,7 @@
 
                 const inventoryItem = document.createElement('div');
                 inventoryItem.classList.add('inventory-item');
+                inventoryItem.classList.add(`location-${item.location}`);
                 inventoryItem.dataset.itemId = item.id;
                 if (itemClass) inventoryItem.classList.add(itemClass);
                 if (registryEditMode) {
@@ -3758,6 +3871,7 @@
             };
             databaseState.reminders = [...getReminders(), reminder];
             queueRemoteSave();
+            void earnCashForRegistryAddition();
             addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'} Repeat: ${reminder.repeat === 'none' ? 'ONCE' : reminder.repeat.toUpperCase()}.`, 'assistant');
         }
 
@@ -4672,6 +4786,9 @@
         });
         document.getElementById('connectSupabaseButton').addEventListener('click', connectSupabase);
         document.getElementById('disconnectSupabaseButton').addEventListener('click', disconnectSupabase);
+        document.getElementById('createCashProfileButton').addEventListener('click', createCashProfile);
+        document.getElementById('cashProfileSelect').addEventListener('change', previewCashProfile);
+        document.getElementById('saveCashProfileButton').addEventListener('click', saveCashProfile);
         document.getElementById('saveAISettingsButton').addEventListener('click', () => {
             localStorage.setItem('viki_api_key', getApiKey());
             localStorage.setItem('viki_model', document.getElementById('modelSelect').value);
