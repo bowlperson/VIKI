@@ -231,9 +231,48 @@
         .game-2048-score { color: var(--freezer); }
         .game-2048-prize { color: #8cff3d; }
         .game-2048-board { background: #080b0a; border: 1px solid #29443d; display: grid; gap: 5px; grid-template-columns: repeat(4, 1fr); padding: 5px; touch-action: none; }
-        .game-2048-tile { align-items: center; aspect-ratio: 1; background: #111713; border: 1px solid #202b26; color: var(--terminal-fg); display: flex; font-size: clamp(0.85rem, 4vw, 1.35rem); justify-content: center; text-shadow: 0 0 7px currentColor; }
+        .game-2048-tile { align-items: center; aspect-ratio: 1; background: #111713; border: 1px solid #202b26; color: #f1f4ef; display: flex; font-size: clamp(0.85rem, 4vw, 1.35rem); justify-content: center; position: relative; text-shadow: 0 1px 2px #000; transform: translateZ(0); }
         .game-2048-tile[data-value="0"] { color: transparent; }
+        .game-2048-tile:not([data-value="0"]) { border-color: rgba(255,255,255,0.18); box-shadow: inset 0 1px rgba(255,255,255,0.1), 0 3px 8px rgba(0,0,0,0.55); }
+        .game-2048-tile[data-value="2"] { background: #317166; }
+        .game-2048-tile[data-value="4"] { background: #35627d; }
+        .game-2048-tile[data-value="8"] { background: #94503d; }
+        .game-2048-tile[data-value="16"] { background: #5d4d7c; }
+        .game-2048-tile[data-value="32"] { background: #7e4658; }
+        .game-2048-tile[data-value="64"] { background: #3f7775; }
+        .game-2048-tile[data-value="128"] { background: #8a7b36; }
+        .game-2048-tile[data-value="256"] { background: #8b6234; }
+        .game-2048-tile[data-value="512"] { background: #766c2d; }
+        .game-2048-tile[data-value="1024"] { background: #517036; }
+        .game-2048-tile[data-value="2048"], .game-2048-tile[data-value="4096"], .game-2048-tile[data-value="8192"] { background: #355b48; color: #ffe66d; }
         .game-2048-tile.mergeable { border-color: rgba(0, 212, 170, 0.72); box-shadow: inset 0 0 9px rgba(0, 212, 170, 0.24), 0 0 4px rgba(0, 212, 170, 0.3); }
+        .game-2048-board.move-left .game-2048-tile:not([data-value="0"]) { animation: tile-slide-left 0.18s ease-out; }
+        .game-2048-board.move-right .game-2048-tile:not([data-value="0"]) { animation: tile-slide-right 0.18s ease-out; }
+        .game-2048-board.move-up .game-2048-tile:not([data-value="0"]) { animation: tile-slide-up 0.18s ease-out; }
+        .game-2048-board.move-down .game-2048-tile:not([data-value="0"]) { animation: tile-slide-down 0.18s ease-out; }
+        .game-2048-tile.merged { animation: tile-merge 0.34s ease-out 0.13s both; z-index: 2; }
+        .game-2048-board.move-left .game-2048-tile.merged { animation: tile-slide-left 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
+        .game-2048-board.move-right .game-2048-tile.merged { animation: tile-slide-right 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
+        .game-2048-board.move-up .game-2048-tile.merged { animation: tile-slide-up 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
+        .game-2048-board.move-down .game-2048-tile.merged { animation: tile-slide-down 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
+        .game-2048-tile.rainbow-1024 { animation: tile-rainbow-rpg 0.22s linear 0.42s infinite !important; z-index: 3; }
+        .game-2048-board.move-left .game-2048-tile.rainbow-1024 { animation: tile-slide-left 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
+        .game-2048-board.move-right .game-2048-tile.rainbow-1024 { animation: tile-slide-right 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
+        .game-2048-board.move-up .game-2048-tile.rainbow-1024 { animation: tile-slide-up 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
+        .game-2048-board.move-down .game-2048-tile.rainbow-1024 { animation: tile-slide-down 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
+        @keyframes tile-slide-left { from { transform: translateX(18px); } }
+        @keyframes tile-slide-right { from { transform: translateX(-18px); } }
+        @keyframes tile-slide-up { from { transform: translateY(18px); } }
+        @keyframes tile-slide-down { from { transform: translateY(-18px); } }
+        @keyframes tile-merge { 0% { transform: scale(0.82); } 58% { transform: scale(1.16); filter: brightness(1.5); } 100% { transform: scale(1); } }
+        @keyframes tile-rainbow-rpg {
+            0% { background: #ff355e; box-shadow: 0 0 16px #ff355e; transform: scale(1); }
+            20% { background: #ffcc33; box-shadow: 0 0 16px #ffcc33; transform: scale(1.08); }
+            40% { background: #45e66f; box-shadow: 0 0 16px #45e66f; transform: scale(1); }
+            60% { background: #35cfff; box-shadow: 0 0 16px #35cfff; transform: scale(1.08); }
+            80% { background: #9755ff; box-shadow: 0 0 16px #9755ff; transform: scale(1); }
+            100% { background: #ff4ac8; box-shadow: 0 0 16px #ff4ac8; transform: scale(1.08); }
+        }
         .game-2048-controls { align-items: center; display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
         .game-2048-status { color: var(--accent-dim); font-size: 0.66rem; margin-top: 8px; min-height: 1em; text-align: center; }
         .game-2048-prizes { color: var(--accent-dim); font-size: 0.56rem; line-height: 1.45; margin-top: 8px; text-align: center; }
@@ -1146,7 +1185,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.16.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.16.1 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1786,6 +1825,8 @@
         let rewardParticles = [];
         let rewardAnimationFrame = null;
         let slotCelebrationTimer = null;
+        let game2048Animation = null;
+        const GAME_2048_TILE_COLORS = { 64: '#3f7775', 128: '#8a7b36', 256: '#8b6234', 512: '#766c2d', 1024: '#517036', 2048: '#355b48' };
 
         function getRewardAudioContext() {
             if (!rewardAudioContext) {
@@ -2054,6 +2095,27 @@
         }
 
         // --- 2048 CASH GAME ---
+        function spawn2048MergeParticles(tileIndex, value) {
+            if (value < 64) return;
+            const tile = document.getElementById('game2048Board').children[tileIndex];
+            if (!tile) return;
+            const bounds = tile.getBoundingClientRect();
+            const colors = value === 1024
+                ? ['#ff355e', '#ffcc33', '#45e66f', '#35cfff', '#9755ff', '#ff4ac8']
+                : [GAME_2048_TILE_COLORS[value] || '#00d4aa'];
+            const now = performance.now();
+            for (let index = 0; index < (value === 1024 ? 36 : 18); index++) {
+                const angle = Math.PI * 2 * index / (value === 1024 ? 36 : 18) + Math.random() * 0.2;
+                rewardParticles.push({
+                    x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2,
+                    vx: Math.cos(angle) * (1.5 + Math.random() * 3.5), vy: Math.sin(angle) * (1.5 + Math.random() * 3.5),
+                    gravity: 0.075, radius: 2 + Math.random() * 2.5, color: colors[index % colors.length],
+                    born: now, life: value === 1024 ? 2600 : 1500, coin: false
+                });
+            }
+            startRewardParticles();
+        }
+
         function get2048Game(profile = getActiveCashProfile()) {
             if (!profile) return null;
             if (!profile.game2048 || !Array.isArray(profile.game2048.board) || profile.game2048.board.length !== 16) {
@@ -2087,15 +2149,29 @@
             const container = document.getElementById('game2048');
             const boardElement = document.getElementById('game2048Board');
             boardElement.replaceChildren();
+            boardElement.className = `game-2048-board${game2048Animation ? ` move-${game2048Animation.direction}` : ''}`;
             const mergeable = game ? get2048MergeableIndexes(game.board) : new Set();
             (game?.board || Array(16).fill(0)).forEach((value, index) => {
                 const tile = document.createElement('div');
-                tile.className = `game-2048-tile${mergeable.has(index) ? ' mergeable' : ''}`;
+                const merged = game2048Animation?.merges.find(entry => entry.index === index);
+                tile.className = `game-2048-tile${mergeable.has(index) ? ' mergeable' : ''}${merged ? ' merged' : ''}${merged?.value === 1024 ? ' rainbow-1024' : ''}`;
                 tile.dataset.value = String(value);
                 tile.setAttribute('role', 'gridcell');
                 tile.textContent = value || '';
                 boardElement.appendChild(tile);
             });
+            if (game2048Animation) {
+                const animation = game2048Animation;
+                game2048Animation = null;
+                requestAnimationFrame(() => {
+                    animation.merges.forEach(merge => spawn2048MergeParticles(merge.index, merge.value));
+                    setTimeout(() => {
+                        boardElement.classList.remove(`move-${animation.direction}`);
+                        boardElement.querySelectorAll('.merged').forEach(tile => tile.classList.remove('merged'));
+                    }, 520);
+                    setTimeout(() => boardElement.querySelectorAll('.rainbow-1024').forEach(tile => tile.classList.remove('rainbow-1024')), 3200);
+                });
+            }
             container.classList.toggle('active', Boolean(game?.active));
             const over = Boolean(game?.active && !game.board.includes(0) && get2048MergeableIndexes(game.board).size === 0);
             container.classList.toggle('game-over', over);
@@ -2135,14 +2211,17 @@
         function slide2048Line(values) {
             const compact = values.filter(Boolean);
             const merged = [];
+            const mergedPositions = [];
             let score = 0;
             for (let index = 0; index < compact.length; index++) {
                 if (compact[index] === compact[index + 1]) {
-                    const value = compact[index] * 2; merged.push(value); score += value; index++;
+                    const value = compact[index] * 2;
+                    mergedPositions.push({ position: merged.length, value });
+                    merged.push(value); score += value; index++;
                 } else merged.push(compact[index]);
             }
             while (merged.length < 4) merged.push(0);
-            return { values: merged, score };
+            return { values: merged, score, mergedPositions };
         }
 
         function move2048(direction) {
@@ -2158,13 +2237,23 @@
                 if (direction === 'down') lines.push([line + 12, line + 8, line + 4, line]);
             }
             let gained = 0;
+            const merges = [];
             lines.forEach(indexes => {
                 const result = slide2048Line(indexes.map(index => game.board[index])); gained += result.score;
                 indexes.forEach((boardIndex, valueIndex) => { game.board[boardIndex] = result.values[valueIndex]; });
+                result.mergedPositions.forEach(merge => merges.push({ index: indexes[merge.position], value: merge.value }));
             });
-            if (before.every((value, index) => value === game.board[index])) { render2048(); return false; }
+            if (before.every((value, index) => value === game.board[index])) { game2048Animation = null; render2048(); return false; }
             game.score += gained;
             spawn2048Tile(game.board);
+            game2048Animation = { direction, merges };
+            const bonus1024 = merges.filter(merge => merge.value === 1024).length * 1000;
+            if (bonus1024) {
+                profile.balance += bonus1024;
+                setMoneyIndicator(profile.balance);
+                showCashReward(bonus1024);
+                addMessage(`2048 RGB BONUS: ${formatCash(bonus1024)} awarded for creating ${bonus1024 > 1000 ? `${bonus1024 / 1000} × ` : ''}1024.`, 'assistant');
+            }
             const newlyWon = GAME_2048_PRIZES.filter(tier => game.score >= tier.score && !game.claimed.includes(tier.score));
             if (newlyWon.length) {
                 const prize = newlyWon.reduce((sum, tier) => sum + tier.prize, 0);
