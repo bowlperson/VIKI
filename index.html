@@ -1017,7 +1017,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.13.1 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.13.2 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1398,7 +1398,7 @@
         let latestDailyFactsContext = '';
         let latestWeatherFactsContext = '';
         let latestDailyBriefingData = null;
-        let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
+        let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [] };
         let supabaseSession = null;
         let syncTimer = null;
         let cashProfiles = [];
@@ -1488,7 +1488,7 @@
         async function loadRemoteState() {
             if (!supabaseSession?.user?.id) return false;
             const rows = await supabaseRequest(`/rest/v1/viki_state?user_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=state`);
-            if (rows[0]?.state) databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], ...rows[0].state };
+            if (rows[0]?.state) databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [], ...rows[0].state };
             else await persistRemoteState();
             setSupabaseStatus(`Connected as ${supabaseSession.user.email}. Remote registry synchronized.`);
             await loadCashProfiles();
@@ -1527,17 +1527,10 @@
         async function loadCashProfiles() {
             if (!supabaseSession?.user?.id) return;
             setCashControlsEnabled(true);
-            cashProfiles = [];
-            document.getElementById('cashProfileSelect').replaceChildren(new Option('None', ''));
-            setMoneyIndicator(0);
-            document.getElementById('cashProfileStatus').textContent = 'Loading cash profiles…';
-            try {
-                const rows = await supabaseRequest(`/rest/v1/viki_cash_profiles?owner_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=id,name,balance&order=name.asc`);
-                cashProfiles = Array.isArray(rows) ? rows : [];
-                renderCashProfiles();
-            } catch (error) {
-                document.getElementById('cashProfileStatus').textContent = `Cash profiles could not be loaded, but Supabase remains connected: ${error.message}`;
-            }
+            cashProfiles = Array.isArray(databaseState.cashProfiles) ? databaseState.cashProfiles : [];
+            cashProfiles.sort((a, b) => a.name.localeCompare(b.name));
+            databaseState.cashProfiles = cashProfiles;
+            renderCashProfiles();
         }
 
         async function createCashProfile() {
@@ -1546,34 +1539,33 @@
             const name = input.value.trim();
             if (!name) { document.getElementById('cashProfileStatus').textContent = 'Enter a profile name.'; return; }
             if (name.toLowerCase() === 'none') { document.getElementById('cashProfileStatus').textContent = 'None is the built-in inactive profile. Choose a different name.'; return; }
+            if (cashProfiles.some(profile => profile.name.toLowerCase() === name.toLowerCase())) { document.getElementById('cashProfileStatus').textContent = 'A cash profile with that name already exists.'; return; }
+            const previousProfiles = [...cashProfiles];
             try {
-                await supabaseRequest('/rest/v1/viki_cash_profiles', {
-                    method: 'POST', headers: { Prefer: 'return=minimal' },
-                    body: JSON.stringify({ owner_id: supabaseSession.user.id, name, balance: 0 })
-                });
+                const created = {
+                    id: typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `cash-${Date.now()}`,
+                    name,
+                    balance: 0
+                };
+                cashProfiles.push(created);
+                databaseState.cashProfiles = cashProfiles;
+                await persistRemoteState();
                 input.value = '';
                 await loadCashProfiles();
-                const created = cashProfiles.find(profile => profile.name.toLowerCase() === name.toLowerCase());
-                if (created) { document.getElementById('cashProfileSelect').value = created.id; setMoneyIndicator(created.balance); }
+                document.getElementById('cashProfileSelect').value = created.id;
+                setMoneyIndicator(created.balance);
                 document.getElementById('cashProfileStatus').textContent = `${name} created. Select and save the profile to activate earnings.`;
-            } catch (error) { document.getElementById('cashProfileStatus').textContent = error.message; }
+            } catch (error) {
+                cashProfiles = previousProfiles;
+                databaseState.cashProfiles = cashProfiles;
+                renderCashProfiles();
+                document.getElementById('cashProfileStatus').textContent = error.message;
+            }
         }
 
         async function previewCashProfile() {
             const id = document.getElementById('cashProfileSelect').value;
-            let profile = cashProfiles.find(entry => entry.id === id);
-            if (profile && supabaseSession?.user?.id) {
-                try {
-                    const rows = await supabaseRequest(`/rest/v1/viki_cash_profiles?id=eq.${encodeURIComponent(id)}&select=id,name,balance`);
-                    if (rows[0]) {
-                        profile = rows[0];
-                        cashProfiles = cashProfiles.map(entry => entry.id === id ? profile : entry);
-                    }
-                } catch (error) {
-                    document.getElementById('cashProfileStatus').textContent = error.message;
-                    return;
-                }
-            }
+            const profile = cashProfiles.find(entry => entry.id === id);
             setMoneyIndicator(profile?.balance || 0);
             document.getElementById('cashProfileStatus').textContent = profile
                 ? `${profile.name}: ${formatCash(profile.balance)}. Save to use this profile.`
@@ -1594,16 +1586,11 @@
         async function earnCashForRegistryAddition() {
             const profileId = localStorage.getItem(CASH_PROFILE_KEY);
             if (!profileId || !supabaseSession?.user?.id || !cashProfiles.some(profile => profile.id === profileId)) return;
-            try {
-                const balance = await supabaseRequest('/rest/v1/rpc/increment_viki_cash', {
-                    method: 'POST', body: JSON.stringify({ profile_id: profileId, amount: 250 })
-                });
-                const profile = cashProfiles.find(entry => entry.id === profileId);
-                if (profile) profile.balance = Number(balance);
-                setMoneyIndicator(balance);
-            } catch (error) {
-                document.getElementById('cashProfileStatus').textContent = `Cash reward was not applied: ${error.message}`;
-            }
+            const profile = cashProfiles.find(entry => entry.id === profileId);
+            profile.balance = Math.max(0, Number(profile.balance) || 0) + 250;
+            databaseState.cashProfiles = cashProfiles;
+            setMoneyIndicator(profile.balance);
+            queueRemoteSave();
         }
 
         async function persistRemoteState() {
@@ -1639,7 +1626,7 @@
         function disconnectSupabase() {
             supabaseSession = null;
             localStorage.removeItem(SUPABASE_SESSION_KEY);
-            databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
+            databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [] };
             cashProfiles = [];
             setCashControlsEnabled(false);
             document.getElementById('cashProfileSelect').replaceChildren(new Option('None', ''));
