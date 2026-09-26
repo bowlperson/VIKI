@@ -1017,7 +1017,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.13.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.13.1 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1291,7 +1291,7 @@
                     <div class="config-title">// CASH PROFILES</div>
                     <div class="config-row"><label class="config-label" for="newCashProfileName">CREATE_PROFILE</label><input class="config-input" id="newCashProfileName" type="text" maxlength="40" placeholder="PROFILE NAME" disabled></div>
                     <div class="config-actions"><button type="button" class="config-button" id="createCashProfileButton" disabled>CREATE</button></div>
-                    <div class="config-row"><label class="config-label" for="cashProfileSelect">SELECT_PROFILE</label><select class="config-select" id="cashProfileSelect" disabled><option value="">NO PROFILE</option></select></div>
+                    <div class="config-row"><label class="config-label" for="cashProfileSelect">SELECT_PROFILE</label><select class="config-select" id="cashProfileSelect" disabled><option value="">None</option></select></div>
                     <div class="config-help" id="cashProfileStatus">Connect to Supabase to access cash profiles. A saved profile earns $250 for every asset or reminder added.</div>
                     <div class="config-actions"><button type="button" class="config-button" id="saveCashProfileButton" disabled>SAVE_PROFILE</button></div>
                 </section>
@@ -1512,21 +1512,32 @@
         function renderCashProfiles() {
             const select = document.getElementById('cashProfileSelect');
             const savedId = localStorage.getItem(CASH_PROFILE_KEY) || '';
-            select.replaceChildren(new Option('NO PROFILE', ''));
+            select.replaceChildren(new Option('None', ''));
             cashProfiles.forEach(profile => select.add(new Option(profile.name, profile.id)));
-            select.value = cashProfiles.some(profile => profile.id === savedId) ? savedId : '';
+            const savedProfileExists = cashProfiles.some(profile => profile.id === savedId);
+            select.value = savedProfileExists ? savedId : '';
+            if (savedId && !savedProfileExists) localStorage.removeItem(CASH_PROFILE_KEY);
             const active = cashProfiles.find(profile => profile.id === select.value);
             setMoneyIndicator(active?.balance || 0);
             document.getElementById('cashProfileStatus').textContent = active
                 ? `${active.name} selected. Save to remember this profile in this browser.`
-                : 'Select a profile, then save it in this browser to activate cash earnings.';
+                : 'None selected. Cash earnings are inactive.';
         }
 
         async function loadCashProfiles() {
             if (!supabaseSession?.user?.id) return;
-            cashProfiles = await supabaseRequest(`/rest/v1/viki_cash_profiles?owner_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=id,name,balance&order=name.asc`);
             setCashControlsEnabled(true);
-            renderCashProfiles();
+            cashProfiles = [];
+            document.getElementById('cashProfileSelect').replaceChildren(new Option('None', ''));
+            setMoneyIndicator(0);
+            document.getElementById('cashProfileStatus').textContent = 'Loading cash profiles…';
+            try {
+                const rows = await supabaseRequest(`/rest/v1/viki_cash_profiles?owner_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=id,name,balance&order=name.asc`);
+                cashProfiles = Array.isArray(rows) ? rows : [];
+                renderCashProfiles();
+            } catch (error) {
+                document.getElementById('cashProfileStatus').textContent = `Cash profiles could not be loaded, but Supabase remains connected: ${error.message}`;
+            }
         }
 
         async function createCashProfile() {
@@ -1534,6 +1545,7 @@
             const input = document.getElementById('newCashProfileName');
             const name = input.value.trim();
             if (!name) { document.getElementById('cashProfileStatus').textContent = 'Enter a profile name.'; return; }
+            if (name.toLowerCase() === 'none') { document.getElementById('cashProfileStatus').textContent = 'None is the built-in inactive profile. Choose a different name.'; return; }
             try {
                 await supabaseRequest('/rest/v1/viki_cash_profiles', {
                     method: 'POST', headers: { Prefer: 'return=minimal' },
@@ -1565,7 +1577,7 @@
             setMoneyIndicator(profile?.balance || 0);
             document.getElementById('cashProfileStatus').textContent = profile
                 ? `${profile.name}: ${formatCash(profile.balance)}. Save to use this profile.`
-                : 'No profile selected. Cash earnings are inactive.';
+                : 'None selected. Cash earnings are inactive.';
         }
 
         function saveCashProfile() {
@@ -1576,7 +1588,7 @@
             setMoneyIndicator(profile?.balance || 0);
             document.getElementById('cashProfileStatus').textContent = profile
                 ? `${profile.name} saved in this browser. Cash earnings are active.`
-                : 'Saved profile cleared. Cash earnings are inactive.';
+                : 'None saved. Cash earnings are inactive.';
         }
 
         async function earnCashForRegistryAddition() {
@@ -1630,7 +1642,7 @@
             databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
             cashProfiles = [];
             setCashControlsEnabled(false);
-            document.getElementById('cashProfileSelect').replaceChildren(new Option('NO PROFILE', ''));
+            document.getElementById('cashProfileSelect').replaceChildren(new Option('None', ''));
             setMoneyIndicator(0);
             renderInventory(); renderSortingRules();
             setSupabaseStatus('Disconnected. Connect to load or save registry data.', true);
