@@ -193,6 +193,11 @@
         .slot-heading { color: #ffe55c; font-size: 0.7rem; letter-spacing: 3px; text-align: center; }
         .slot-reels { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); margin: 12px 0; }
         .slot-reel { align-items: center; background: #050706; border: 1px solid #68685d; color: #8cff3d; display: flex; font-size: clamp(1.25rem, 6vw, 2rem); height: 92px; justify-content: center; overflow: hidden; text-shadow: 0 0 9px currentColor; }
+        .slot-reel[data-value="50"] { color: #56b9a9; }
+        .slot-reel[data-value="250"] { color: #5f9bc0; }
+        .slot-reel[data-value="500"] { color: #dc8066; }
+        .slot-reel[data-value="1000"] { color: #a491d1; }
+        .slot-reel[data-value="2500"] { color: #d4bf58; }
         .slot-reel.spinning { animation: reel-flicker 0.09s linear infinite; }
         @keyframes reel-flicker { 50% { opacity: 0.62; transform: translateY(2px); } }
         .slot-controls { align-items: center; display: flex; gap: 8px; justify-content: center; }
@@ -246,25 +251,7 @@
         .game-2048-tile[data-value="1024"] { background: #517036; }
         .game-2048-tile[data-value="2048"], .game-2048-tile[data-value="4096"], .game-2048-tile[data-value="8192"] { background: #355b48; color: #ffe66d; }
         .game-2048-tile.mergeable { border-color: rgba(0, 212, 170, 0.72); box-shadow: inset 0 0 9px rgba(0, 212, 170, 0.24), 0 0 4px rgba(0, 212, 170, 0.3); }
-        .game-2048-board.move-left .game-2048-tile:not([data-value="0"]) { animation: tile-slide-left 0.18s ease-out; }
-        .game-2048-board.move-right .game-2048-tile:not([data-value="0"]) { animation: tile-slide-right 0.18s ease-out; }
-        .game-2048-board.move-up .game-2048-tile:not([data-value="0"]) { animation: tile-slide-up 0.18s ease-out; }
-        .game-2048-board.move-down .game-2048-tile:not([data-value="0"]) { animation: tile-slide-down 0.18s ease-out; }
-        .game-2048-tile.merged { animation: tile-merge 0.34s ease-out 0.13s both; z-index: 2; }
-        .game-2048-board.move-left .game-2048-tile.merged { animation: tile-slide-left 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
-        .game-2048-board.move-right .game-2048-tile.merged { animation: tile-slide-right 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
-        .game-2048-board.move-up .game-2048-tile.merged { animation: tile-slide-up 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
-        .game-2048-board.move-down .game-2048-tile.merged { animation: tile-slide-down 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both; }
         .game-2048-tile.rainbow-1024 { animation: tile-rainbow-rpg 0.22s linear 0.42s infinite !important; z-index: 3; }
-        .game-2048-board.move-left .game-2048-tile.rainbow-1024 { animation: tile-slide-left 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
-        .game-2048-board.move-right .game-2048-tile.rainbow-1024 { animation: tile-slide-right 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
-        .game-2048-board.move-up .game-2048-tile.rainbow-1024 { animation: tile-slide-up 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
-        .game-2048-board.move-down .game-2048-tile.rainbow-1024 { animation: tile-slide-down 0.18s ease-out, tile-merge 0.34s ease-out 0.18s both, tile-rainbow-rpg 0.22s linear 0.52s infinite !important; }
-        @keyframes tile-slide-left { from { transform: translateX(18px); } }
-        @keyframes tile-slide-right { from { transform: translateX(-18px); } }
-        @keyframes tile-slide-up { from { transform: translateY(18px); } }
-        @keyframes tile-slide-down { from { transform: translateY(-18px); } }
-        @keyframes tile-merge { 0% { transform: scale(0.82); } 58% { transform: scale(1.16); filter: brightness(1.5); } 100% { transform: scale(1); } }
         @keyframes tile-rainbow-rpg {
             0% { background: #ff355e; box-shadow: 0 0 16px #ff355e; transform: scale(1); }
             20% { background: #ffcc33; box-shadow: 0 0 16px #ffcc33; transform: scale(1.08); }
@@ -1185,7 +1172,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.16.1 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.16.2 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1502,13 +1489,13 @@
             <button type="button" class="slot-close" id="closeSlotMachineButton" aria-label="Close cash allocation">×</button>
             <h2 class="slot-heading" id="slotHeading">— SLOT MACHINE —</h2>
             <div class="slot-reels" aria-live="polite">
-                <div class="slot-reel" id="slotReel0">$50</div>
-                <div class="slot-reel" id="slotReel1">$250</div>
-                <div class="slot-reel" id="slotReel2">$500</div>
+                <div class="slot-reel" id="slotReel0" data-value="50">$50</div>
+                <div class="slot-reel" id="slotReel1" data-value="250">$250</div>
+                <div class="slot-reel" id="slotReel2" data-value="500">$500</div>
             </div>
             <div class="slot-controls">
                 <button type="button" class="config-button" id="slotBetMinus" aria-label="Decrease bet">−</button>
-                <div class="slot-bet" id="slotBetDisplay">FREE ×3</div>
+                <div class="slot-bet" id="slotBetDisplay">FREE ×4</div>
                 <button type="button" class="config-button" id="slotBetPlus" aria-label="Increase bet">+</button>
                 <button type="button" class="config-button slot-spin" id="slotSpinButton">SPIN</button>
                 <button type="button" class="config-button" id="open2048Button" aria-label="Open 2048">2048 ›</button>
@@ -1529,7 +1516,7 @@
             <div class="game-2048-meta"><span class="game-2048-score" id="game2048Score">SCORE 0</span><span class="game-2048-prize" id="game2048Prize">PRIZES $0</span></div>
             <div class="game-2048-board" id="game2048Board" role="grid" aria-label="2048 board"></div>
             <div class="game-2048-controls">
-                <div class="game-2048-bet-controls">BET $250</div>
+                <div class="game-2048-bet-controls" id="game2048BetDisplay">BET UP TO $250</div>
                 <button type="button" class="config-button" id="game2048StartButton">START</button>
             </div>
             <div class="game-2048-status" id="game2048Status">SWIPE RIGHT TO RETURN</div>
@@ -1975,9 +1962,9 @@
             const bet = slotBetMultiplier * 250;
             const display = document.getElementById('slotBetDisplay');
             const spin = document.getElementById('slotSpinButton');
-            display.textContent = free ? 'FREE ×3' : `$${bet} ×${slotBetMultiplier}`;
+            display.textContent = free ? 'FREE ×4' : `$${bet} ×${slotBetMultiplier}`;
             document.getElementById('slotBetMinus').disabled = slotSpinning || free || slotBetMultiplier <= 1;
-            document.getElementById('slotBetPlus').disabled = slotSpinning || free || slotBetMultiplier >= 10 || !profile || profile.balance < (slotBetMultiplier + 1) * 250;
+            document.getElementById('slotBetPlus').disabled = slotSpinning || free || !profile || profile.balance < (slotBetMultiplier + 1) * 250;
             spin.disabled = slotSpinning || !profile || (!free && profile.balance < bet);
             spin.textContent = slotSpinning ? 'SPINNING' : 'SPIN';
             document.getElementById('slotBalance').textContent = profile ? `BALANCE ${formatCash(profile.balance)}` : 'BALANCE —';
@@ -2023,9 +2010,10 @@
 
         function animateReel(element, result, duration) {
             element.classList.add('spinning');
-            const interval = setInterval(() => { element.textContent = formatCash(randomSlotValue()); }, 75);
+            const setValue = value => { element.dataset.value = String(value); element.textContent = formatCash(value); };
+            const interval = setInterval(() => setValue(randomSlotValue()), 75);
             return new Promise(resolve => setTimeout(() => {
-                clearInterval(interval); element.classList.remove('spinning'); element.textContent = formatCash(result); resolve();
+                clearInterval(interval); element.classList.remove('spinning'); setValue(result); resolve();
             }, duration));
         }
 
@@ -2054,7 +2042,7 @@
             if (!profile) { updateSlotMachine(); return; }
             clearSlotCelebration();
             const free = hasDailyFreeSpin(profile);
-            const multiplier = free ? 3 : slotBetMultiplier;
+            const multiplier = free ? 4 : slotBetMultiplier;
             const bet = free ? 0 : slotBetMultiplier * 250;
             if (profile.balance < bet) { updateSlotMachine(); return; }
             const guaranteedJackpot = Math.max(0, Number(profile.slotLuck) || 0) >= 39;
@@ -2149,12 +2137,11 @@
             const container = document.getElementById('game2048');
             const boardElement = document.getElementById('game2048Board');
             boardElement.replaceChildren();
-            boardElement.className = `game-2048-board${game2048Animation ? ` move-${game2048Animation.direction}` : ''}`;
+            boardElement.className = 'game-2048-board';
             const mergeable = game ? get2048MergeableIndexes(game.board) : new Set();
             (game?.board || Array(16).fill(0)).forEach((value, index) => {
                 const tile = document.createElement('div');
-                const merged = game2048Animation?.merges.find(entry => entry.index === index);
-                tile.className = `game-2048-tile${mergeable.has(index) ? ' mergeable' : ''}${merged ? ' merged' : ''}${merged?.value === 1024 ? ' rainbow-1024' : ''}`;
+                tile.className = `game-2048-tile${mergeable.has(index) ? ' mergeable' : ''}`;
                 tile.dataset.value = String(value);
                 tile.setAttribute('role', 'gridcell');
                 tile.textContent = value || '';
@@ -2164,12 +2151,33 @@
                 const animation = game2048Animation;
                 game2048Animation = null;
                 requestAnimationFrame(() => {
-                    animation.merges.forEach(merge => spawn2048MergeParticles(merge.index, merge.value));
-                    setTimeout(() => {
-                        boardElement.classList.remove(`move-${animation.direction}`);
-                        boardElement.querySelectorAll('.merged').forEach(tile => tile.classList.remove('merged'));
-                    }, 520);
-                    setTimeout(() => boardElement.querySelectorAll('.rainbow-1024').forEach(tile => tile.classList.remove('rainbow-1024')), 3200);
+                    const sampleTile = boardElement.querySelector('.game-2048-tile');
+                    const step = (sampleTile?.getBoundingClientRect().width || 0) + 5;
+                    animation.movements.forEach(movement => {
+                        const tile = boardElement.children[movement.index];
+                        if (!tile || !movement.value) return;
+                        const sourceRow = Math.floor(movement.source / 4), sourceColumn = movement.source % 4;
+                        const destinationRow = Math.floor(movement.index / 4), destinationColumn = movement.index % 4;
+                        const dx = (sourceColumn - destinationColumn) * step;
+                        const dy = (sourceRow - destinationRow) * step;
+                        const overshootX = dx ? -Math.sign(dx) * 6 : 0;
+                        const overshootY = dy ? -Math.sign(dy) * 6 : 0;
+                        const slide = tile.animate([
+                            { transform: `translate(${dx}px, ${dy}px)`, offset: 0 },
+                            { transform: `translate(${overshootX}px, ${overshootY}px)`, offset: 0.86 },
+                            { transform: 'translate(0, 0)', offset: 1 }
+                        ], { duration: 280, easing: 'cubic-bezier(0.2, 0.78, 0.28, 1)' });
+                        if (movement.merged) slide.finished.then(() => {
+                            tile.animate([
+                                { transform: 'scale(0.9)' }, { transform: 'scale(1.14)', filter: 'brightness(1.5)' }, { transform: 'scale(1)', filter: 'brightness(1)' }
+                            ], { duration: 300, easing: 'ease-out' });
+                            spawn2048MergeParticles(movement.index, movement.value);
+                            if (movement.value === 1024) {
+                                tile.classList.add('rainbow-1024');
+                                setTimeout(() => tile.classList.remove('rainbow-1024'), 3200);
+                            }
+                        });
+                    });
                 });
             }
             container.classList.toggle('active', Boolean(game?.active));
@@ -2178,10 +2186,12 @@
             document.getElementById('game2048Score').textContent = `SCORE ${(game?.score || 0).toLocaleString('en-US')}`;
             document.getElementById('game2048Prize').textContent = `PRIZES ${formatCash(game?.totalPrizes || 0)}`;
             const start = document.getElementById('game2048StartButton');
-            start.textContent = over ? 'NEW $250' : 'START $250';
+            const entryCost = Math.min(250, Math.max(0, Number(profile?.balance) || 0));
+            start.textContent = over ? `NEW ${entryCost ? formatCash(entryCost) : 'FREE'}` : `START ${entryCost ? formatCash(entryCost) : 'FREE'}`;
             start.hidden = Boolean(game?.active && !over);
-            start.disabled = !profile || profile.balance < 250;
-            document.getElementById('game2048Status').textContent = !profile ? 'SELECT AND SAVE A CASH PROFILE' : over ? 'NO MOVES · START A NEW GAME' : game.active ? 'USE ARROWS OR SWIPE THE BOARD' : profile.balance < 250 ? 'INSUFFICIENT BALANCE' : 'PLACE BET TO BEGIN';
+            start.disabled = !profile;
+            document.getElementById('game2048BetDisplay').textContent = entryCost ? `BET ${formatCash(entryCost)}` : 'BET FREE';
+            document.getElementById('game2048Status').textContent = !profile ? 'SELECT AND SAVE A CASH PROFILE' : over ? 'NO MOVES · START A NEW GAME' : game.active ? 'USE ARROWS OR SWIPE THE BOARD' : 'PLACE BET TO BEGIN';
         }
 
         function show2048() {
@@ -2191,37 +2201,42 @@
         }
 
         function showSlotMachine() {
-            const game = get2048Game();
-            if (game?.active) return;
             document.getElementById('slotDrawer').classList.remove('show-2048');
             updateSlotMachine();
         }
 
         function start2048Game() {
             const profile = getActiveCashProfile();
-            if (!profile || profile.balance < 250) { render2048(); return; }
-            profile.balance -= 250;
+            if (!profile) { render2048(); return; }
+            const entryCost = Math.min(250, Math.max(0, Number(profile.balance) || 0));
+            profile.balance -= entryCost;
             profile.game2048 = { board: Array(16).fill(0), score: 0, active: true, claimed: [], totalPrizes: 0 };
             spawn2048Tile(profile.game2048.board); spawn2048Tile(profile.game2048.board);
             databaseState.cashProfiles = cashProfiles;
             setMoneyIndicator(profile.balance); queueRemoteSave(); render2048();
-            addMessage(`2048 GAME: ${formatCash(250)} wager placed.`, 'assistant');
+            addMessage(`2048 GAME: ${entryCost ? `${formatCash(entryCost)} wager placed` : 'free entry activated'}.`, 'assistant');
         }
 
         function slide2048Line(values) {
-            const compact = values.filter(Boolean);
+            const compact = values.map((value, position) => value ? { value, sources: [position] } : null).filter(Boolean);
             const merged = [];
             const mergedPositions = [];
+            const groups = [];
             let score = 0;
             for (let index = 0; index < compact.length; index++) {
-                if (compact[index] === compact[index + 1]) {
-                    const value = compact[index] * 2;
+                if (compact[index].value === compact[index + 1]?.value) {
+                    const value = compact[index].value * 2;
                     mergedPositions.push({ position: merged.length, value });
-                    merged.push(value); score += value; index++;
-                } else merged.push(compact[index]);
+                    merged.push(value);
+                    groups.push({ sources: [...compact[index].sources, ...compact[index + 1].sources], value, merged: true });
+                    score += value; index++;
+                } else {
+                    merged.push(compact[index].value);
+                    groups.push({ sources: compact[index].sources, value: compact[index].value, merged: false });
+                }
             }
             while (merged.length < 4) merged.push(0);
-            return { values: merged, score, mergedPositions };
+            return { values: merged, score, mergedPositions, groups };
         }
 
         function move2048(direction) {
@@ -2238,15 +2253,22 @@
             }
             let gained = 0;
             const merges = [];
+            const movements = [];
             lines.forEach(indexes => {
                 const result = slide2048Line(indexes.map(index => game.board[index])); gained += result.score;
                 indexes.forEach((boardIndex, valueIndex) => { game.board[boardIndex] = result.values[valueIndex]; });
                 result.mergedPositions.forEach(merge => merges.push({ index: indexes[merge.position], value: merge.value }));
+                result.groups.forEach((group, destinationPosition) => movements.push({
+                    index: indexes[destinationPosition],
+                    source: indexes[group.sources[group.sources.length - 1]],
+                    value: group.value,
+                    merged: group.merged
+                }));
             });
             if (before.every((value, index) => value === game.board[index])) { game2048Animation = null; render2048(); return false; }
             game.score += gained;
             spawn2048Tile(game.board);
-            game2048Animation = { direction, merges };
+            game2048Animation = { direction, merges, movements };
             const bonus1024 = merges.filter(merge => merge.value === 1024).length * 1000;
             if (bonus1024) {
                 profile.balance += bonus1024;
@@ -5491,7 +5513,7 @@
         document.getElementById('slotSpinButton').addEventListener('click', spinSlotMachine);
         document.getElementById('open2048Button').addEventListener('click', show2048);
         document.getElementById('slotBetMinus').addEventListener('click', () => { slotBetMultiplier = Math.max(1, slotBetMultiplier - 1); updateSlotMachine(); });
-        document.getElementById('slotBetPlus').addEventListener('click', () => { slotBetMultiplier = Math.min(10, slotBetMultiplier + 1); updateSlotMachine(); });
+        document.getElementById('slotBetPlus').addEventListener('click', () => { slotBetMultiplier += 1; updateSlotMachine(); });
         document.getElementById('slotDrawer').addEventListener('click', event => { if (event.target.id === 'slotDrawer') closeSlotMachine(); });
         let pagePullStart = null;
         document.addEventListener('touchstart', event => {
@@ -5548,7 +5570,7 @@
             const dy = event.changedTouches[0].clientY - gameShellTouchStart.y;
             gameShellTouchStart = null;
             if (dy < -45 && Math.abs(dy) > Math.abs(dx)) closeSlotMachine();
-            else if (dx > 55 && !get2048Game()?.active) showSlotMachine();
+            else if (dx > 55 && Math.abs(dx) > Math.abs(dy)) showSlotMachine();
         }, { passive: true });
         document.addEventListener('keydown', event => {
             if (document.getElementById('slotDrawer').hidden || !document.getElementById('slotDrawer').classList.contains('show-2048')) return;
