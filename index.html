@@ -137,12 +137,12 @@
         .reward-canvas { inset: 0; pointer-events: none; position: fixed; z-index: 1200; }
 
         .slot-drawer {
-            align-items: flex-start;
+            align-items: center;
             background: rgba(0, 0, 0, 0.72);
             display: flex;
             inset: 0;
             justify-content: center;
-            padding-top: max(28px, env(safe-area-inset-top));
+            padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
             position: fixed;
             transition: opacity 0.2s ease;
             z-index: 1100;
@@ -161,6 +161,18 @@
             width: calc(100% - 24px);
         }
         .slot-machine.pulling { transform: translateY(24px); }
+        .slot-machine.pushing { transform: translateY(-24px); }
+        .slot-machine.entering { animation: slot-fall-in 0.48s cubic-bezier(0.18, 0.86, 0.3, 1.08); }
+        .slot-machine.exiting { animation: slot-fly-out 0.3s ease-in forwards; }
+        @keyframes slot-fall-in {
+            from { opacity: 0; transform: translateY(calc(-50vh - 100%)); }
+            72% { opacity: 1; transform: translateY(18px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slot-fly-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(calc(-50vh - 100%)); }
+        }
         .slot-heading { color: #ffe55c; font-size: 0.7rem; letter-spacing: 3px; text-align: center; }
         .slot-reels { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); margin: 12px 0; }
         .slot-reel { align-items: center; background: #050706; border: 1px solid #68685d; color: #8cff3d; display: flex; font-size: clamp(1.25rem, 6vw, 2rem); height: 92px; justify-content: center; overflow: hidden; text-shadow: 0 0 9px currentColor; }
@@ -1066,7 +1078,7 @@
             .settings-header .header-button { width: 100%; }
             .settings-page { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
             body.registry-edit-mode .sidebar { display: flex; }
-            .slot-drawer { padding-top: max(8px, env(safe-area-inset-top)); }
+            .slot-drawer { padding: max(8px, env(safe-area-inset-top)) 6px max(8px, env(safe-area-inset-bottom)); }
             .slot-machine { border-top-width: 2px; width: calc(100% - 12px); }
             .slot-controls { flex-wrap: wrap; }
         }
@@ -1081,7 +1093,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.14.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.14.1 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1832,11 +1844,27 @@
         }
 
         function openSlotMachine() {
-            document.getElementById('slotDrawer').hidden = false;
+            const drawer = document.getElementById('slotDrawer');
+            const machine = document.getElementById('slotMachine');
+            drawer.hidden = false;
+            machine.classList.remove('exiting', 'pulling', 'pushing');
+            machine.classList.add('entering');
+            machine.addEventListener('animationend', () => machine.classList.remove('entering'), { once: true });
             updateSlotMachine();
         }
 
-        function closeSlotMachine() { if (!slotSpinning) document.getElementById('slotDrawer').hidden = true; }
+        function closeSlotMachine() {
+            if (slotSpinning) return;
+            const drawer = document.getElementById('slotDrawer');
+            const machine = document.getElementById('slotMachine');
+            if (drawer.hidden || machine.classList.contains('exiting')) return;
+            machine.classList.remove('entering', 'pulling', 'pushing');
+            machine.classList.add('exiting');
+            machine.addEventListener('animationend', () => {
+                machine.classList.remove('exiting');
+                drawer.hidden = true;
+            }, { once: true });
+        }
 
         function randomSlotValue() {
             const array = new Uint32Array(1);
@@ -1880,6 +1908,9 @@
             slotSpinning = false;
             updateSlotMachine();
             document.getElementById('slotResult').textContent = winnings ? `${jackpot ? 'JACKPOT · ' : ''}+${formatCash(winnings)}` : 'NO MATCH';
+            const spinCost = free ? 'daily free spin' : `${formatCash(bet)} wager`;
+            const reelSummary = results.map(formatCash).join(' / ');
+            addMessage(`CASH ALLOCATION: ${reelSummary} · ${spinCost} at ×${multiplier} · ${jackpot ? 'JACKPOT · ' : ''}${winnings ? `${formatCash(winnings)} won` : 'no winnings'} · balance ${formatCash(profile.balance)}.`, 'system');
         }
 
         async function persistRemoteState() {
@@ -4450,6 +4481,20 @@
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
 
+            const developerCashCommand = text.trim().match(/^xoxo\s+sept\s*=\s*\$?([\d,]+(?:\.\d{1,2})?)$/i);
+            if (developerCashCommand) {
+                const profile = getActiveCashProfile();
+                if (!profile) return { message: 'Connect to Supabase and save a cash profile before using this command.', responseRole: 'error' };
+                const amount = Number(developerCashCommand[1].replace(/,/g, ''));
+                if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000) return { message: 'Developer cash amount must be greater than $0 and no more than $1,000,000,000.', responseRole: 'error' };
+                profile.balance = Math.round((Number(profile.balance) + amount) * 100) / 100;
+                databaseState.cashProfiles = cashProfiles;
+                setMoneyIndicator(profile.balance);
+                queueRemoteSave();
+                showCashReward(amount);
+                return { message: `Developer cash allocation complete: +${formatCash(amount)}. ${profile.name} balance: ${formatCash(profile.balance)}.` };
+            }
+
             // Device time is authoritative and does not require a network or AI call.
             if (/^(?:what(?:'s| is) (?:the )?(?:date|time|day)|what(?:'s| is) today|today(?:'s)? date|current (?:date|time))\??$/i.test(text.trim())) {
                 const now = getDeviceNow();
@@ -5094,16 +5139,20 @@
         let machinePullStart = null;
         document.getElementById('slotMachine').addEventListener('touchstart', event => { machinePullStart = event.touches[0]?.clientY ?? null; }, { passive: true });
         document.getElementById('slotMachine').addEventListener('touchmove', event => {
-            if (machinePullStart !== null && event.touches[0].clientY - machinePullStart > 32) {
+            if (machinePullStart === null) return;
+            const distance = event.touches[0].clientY - machinePullStart;
+            if (Math.abs(distance) > 32) {
                 event.preventDefault();
-                document.getElementById('slotMachine').classList.add('pulling');
+                document.getElementById('slotMachine').classList.toggle('pulling', distance > 0);
+                document.getElementById('slotMachine').classList.toggle('pushing', distance < 0);
             }
         }, { passive: false });
         document.getElementById('slotMachine').addEventListener('touchend', event => {
-            const pulled = machinePullStart !== null && event.changedTouches[0]?.clientY - machinePullStart > 45;
+            const distance = machinePullStart === null ? 0 : event.changedTouches[0]?.clientY - machinePullStart;
             machinePullStart = null;
-            document.getElementById('slotMachine').classList.remove('pulling');
-            if (pulled) void spinSlotMachine();
+            document.getElementById('slotMachine').classList.remove('pulling', 'pushing');
+            if (distance > 45) void spinSlotMachine();
+            else if (distance < -45) closeSlotMachine();
         }, { passive: true });
         document.getElementById('saveAISettingsButton').addEventListener('click', () => {
             localStorage.setItem('viki_api_key', getApiKey());
