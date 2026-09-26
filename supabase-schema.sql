@@ -1,7 +1,7 @@
 -- Run once in the Supabase SQL editor. Authentication must have Email enabled.
 create table if not exists public.viki_state (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  state jsonb not null default '{"inventory":[],"presets":{},"favoriteRules":{},"reminders":[]}'::jsonb,
+  state jsonb not null default '{"inventory":[],"presets":{},"favoriteRules":{},"reminders":[],"cashProfiles":[]}'::jsonb,
   updated_at timestamptz not null default now()
 );
 

@@ -100,7 +100,108 @@
         .subtitle {
             color: var(--accent-dim);
             font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
+
+        .money-indicator {
+            appearance: none;
+            color: var(--accent-cyan);
+            border: 1px solid var(--border-color);
+            background: #111113;
+            cursor: pointer;
+            font: inherit;
+            padding: 3px 7px;
+            white-space: nowrap;
+        }
+
+        .reward-float {
+            animation: reward-rise 1.8s ease-out forwards;
+            color: var(--accent-cyan);
+            font-size: 0.78rem;
+            font-weight: bold;
+            left: 50%;
+            pointer-events: none;
+            position: fixed;
+            text-shadow: 0 0 5px currentColor, 0 0 12px currentColor;
+            top: calc(50% - 170px);
+            transform: translateX(-50%);
+            z-index: 1301;
+        }
+
+        .reward-float.jackpot { color: #ffd700; font-size: 1.35rem; animation-duration: 2.6s; }
+        @keyframes reward-rise {
+            0% { opacity: 0; transform: translate(-50%, 12px) scale(0.8); }
+            18% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -58px) scale(1.08); }
+        }
+
+        .reward-canvas { inset: 0; pointer-events: none; position: fixed; z-index: 1300; }
+
+        .slot-drawer {
+            align-items: center;
+            background: rgba(0, 0, 0, 0.72);
+            display: flex;
+            inset: 0;
+            justify-content: center;
+            padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+            position: fixed;
+            transition: opacity 0.2s ease;
+            z-index: 1100;
+        }
+        .slot-drawer[hidden] { display: none; }
+        .slot-machine {
+            background: linear-gradient(180deg, #11130f, #090b09);
+            border: 1px solid #8b7600;
+            box-shadow: 0 0 24px rgba(255, 215, 0, 0.12), 0 12px 40px #000;
+            max-width: 430px;
+            padding: 14px;
+            position: relative;
+            touch-action: none;
+            transform: translateY(0);
+            transition: transform 0.22s ease;
+            width: calc(100% - 24px);
+        }
+        .slot-machine.pulling { transform: translateY(24px); }
+        .slot-machine.pushing { transform: translateY(-24px); }
+        .slot-machine.entering { animation: slot-fall-in 0.48s cubic-bezier(0.18, 0.86, 0.3, 1.08); }
+        .slot-machine.exiting { animation: slot-fly-out 0.3s ease-in forwards; }
+        .slot-machine.win-flash, .slot-reel.win-match { animation: slot-win-flash 0.3s steps(2, end) 10; }
+        .slot-machine.jackpot-flash, .slot-reel.jackpot-match { animation: slot-jackpot-rainbow 0.18s linear infinite; }
+        @keyframes slot-fall-in {
+            from { opacity: 0; transform: translateY(calc(-50vh - 100%)); }
+            72% { opacity: 1; transform: translateY(18px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slot-fly-out {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(calc(-50vh - 100%)); }
+        }
+        @keyframes slot-win-flash {
+            0%, 100% { border-color: #6e610e; color: #8cff3d; box-shadow: none; }
+            50% { border-color: #ffe900; color: #ffe900; box-shadow: 0 0 20px rgba(255, 233, 0, 0.9); }
+        }
+        @keyframes slot-jackpot-rainbow {
+            0% { border-color: #ff334c; color: #ff334c; box-shadow: 0 0 22px #ff334c; }
+            20% { border-color: #ffdc35; color: #ffdc35; box-shadow: 0 0 22px #ffdc35; }
+            40% { border-color: #4dff66; color: #4dff66; box-shadow: 0 0 22px #4dff66; }
+            60% { border-color: #38dcff; color: #38dcff; box-shadow: 0 0 22px #38dcff; }
+            80% { border-color: #b34dff; color: #b34dff; box-shadow: 0 0 22px #b34dff; }
+            100% { border-color: #ff3ebf; color: #ff3ebf; box-shadow: 0 0 22px #ff3ebf; }
+        }
+        .slot-heading { color: #ffe55c; font-size: 0.7rem; letter-spacing: 3px; text-align: center; }
+        .slot-reels { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); margin: 12px 0; }
+        .slot-reel { align-items: center; background: #050706; border: 1px solid #68685d; color: #8cff3d; display: flex; font-size: clamp(1.25rem, 6vw, 2rem); height: 92px; justify-content: center; overflow: hidden; text-shadow: 0 0 9px currentColor; }
+        .slot-reel.spinning { animation: reel-flicker 0.09s linear infinite; }
+        @keyframes reel-flicker { 50% { opacity: 0.62; transform: translateY(2px); } }
+        .slot-controls { align-items: center; display: flex; gap: 8px; justify-content: center; }
+        .slot-controls .config-button { min-width: 38px; min-height: 36px; }
+        .slot-bet { color: var(--accent-cyan); min-width: 118px; text-align: center; }
+        .slot-spin { border-color: #8b7600; color: #ffe55c; min-width: 118px; }
+        .slot-result { color: var(--accent-dim); font-size: 0.68rem; min-height: 1em; margin-top: 10px; text-align: center; }
+        .slot-close { background: transparent; border: 0; color: var(--accent-dim); cursor: pointer; font: inherit; padding: 5px; position: absolute; right: 5px; top: 3px; }
+        .slot-drawer-handle { color: var(--accent-cyan); font-size: 0.65rem; letter-spacing: 5px; margin-bottom: 5px; text-align: center; }
 
         .operators-easter-egg {
             appearance: none;
@@ -362,18 +463,10 @@
             border-color: var(--accent-amber);
         }
 
-        .inventory-item.expiring {
-            border-left-color: var(--accent-amber);
-        }
-
-        .inventory-item.expired {
-            border-left-color: var(--accent-red);
-            opacity: 0.6;
-        }
-
-        .inventory-item.fresh {
-            border-left-color: var(--accent-cyan);
-        }
+        .inventory-item.location-fridge { border-left-color: var(--fridge); }
+        .inventory-item.location-freezer { border-left-color: var(--freezer); }
+        .inventory-item.location-cupboard { border-left-color: var(--cupboard); }
+        .inventory-item.expired { opacity: 0.6; }
 
         .item-header {
             display: flex;
@@ -1002,6 +1095,9 @@
             .settings-header .header-button { width: 100%; }
             .settings-page { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
             body.registry-edit-mode .sidebar { display: flex; }
+            .slot-drawer { padding: max(8px, env(safe-area-inset-top)) 6px max(8px, env(safe-area-inset-bottom)); }
+            .slot-machine { border-top-width: 2px; width: calc(100% - 12px); }
+            .slot-controls { flex-wrap: wrap; }
         }
 
     </style>
@@ -1014,17 +1110,9 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.11.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.14.2 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
         </div>
         <div class="system-status">
-            <div class="status-item">
-                <div class="status-indicator active" id="sysStatus"></div>
-                <span>SYSTEM</span>
-            </div>
-            <div class="status-item">
-                <div class="status-indicator" id="aiStatus"></div>
-                <span id="aiStatusText">STANDBY</span>
-            </div>
             <div class="status-item">
                 <div class="status-indicator active"></div>
                 <span id="deviceDateTime">TIME_SYNC_PENDING</span>
@@ -1293,6 +1381,14 @@
                     <div class="config-actions"><button type="button" class="config-button" id="connectSupabaseButton">CONNECT_AND_SYNC</button><button type="button" class="config-button" id="disconnectSupabaseButton">DISCONNECT</button></div>
                 </section>
                 <section class="settings-section">
+                    <div class="config-title">// CASH PROFILES</div>
+                    <div class="config-row"><label class="config-label" for="newCashProfileName">CREATE_PROFILE</label><input class="config-input" id="newCashProfileName" type="text" maxlength="40" placeholder="PROFILE NAME" disabled></div>
+                    <div class="config-actions"><button type="button" class="config-button" id="createCashProfileButton" disabled>CREATE</button></div>
+                    <div class="config-row"><label class="config-label" for="cashProfileSelect">SELECT_PROFILE</label><select class="config-select" id="cashProfileSelect" disabled><option value="">None</option></select></div>
+                    <div class="config-help" id="cashProfileStatus">Connect to Supabase to access cash profiles. A saved profile earns $250 for every asset or reminder added.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="saveCashProfileButton" disabled>SAVE_PROFILE</button><button type="button" class="config-button" id="openSlotMachineButton" disabled>DAILY_CASH</button></div>
+                </section>
+                <section class="settings-section">
                     <div class="config-title">// DATA MANAGEMENT</div>
                     <div class="config-actions">
                         <button type="button" class="config-button" id="exportDataButton">EXPORT_DATA</button>
@@ -1325,6 +1421,27 @@
         </div>
     </section>
 
+    <div class="slot-drawer" id="slotDrawer" role="dialog" aria-modal="true" aria-labelledby="slotHeading" hidden>
+        <div class="slot-machine" id="slotMachine">
+            <div class="slot-drawer-handle">•••</div>
+            <button type="button" class="slot-close" id="closeSlotMachineButton" aria-label="Close cash allocation">×</button>
+            <h2 class="slot-heading" id="slotHeading">— SLOT MACHINE —</h2>
+            <div class="slot-reels" aria-live="polite">
+                <div class="slot-reel" id="slotReel0">$50</div>
+                <div class="slot-reel" id="slotReel1">$150</div>
+                <div class="slot-reel" id="slotReel2">$300</div>
+            </div>
+            <div class="slot-controls">
+                <button type="button" class="config-button" id="slotBetMinus" aria-label="Decrease bet">−</button>
+                <div class="slot-bet" id="slotBetDisplay">FREE ×3</div>
+                <button type="button" class="config-button" id="slotBetPlus" aria-label="Increase bet">+</button>
+                <button type="button" class="config-button slot-spin" id="slotSpinButton">SPIN</button>
+            </div>
+            <div class="slot-result" id="slotResult">SELECT A CASH PROFILE</div>
+        </div>
+    </div>
+    <canvas class="reward-canvas" id="rewardCanvas" aria-hidden="true"></canvas>
+
     <script src="viki-personality.js"></script>
     <script>
         // --- CONFIGURATION ---
@@ -1344,6 +1461,7 @@
         const NO_LLM_KEY = 'viki_no_llm';
         const SUPABASE_CONFIG_KEY = 'viki_supabase_config';
         const SUPABASE_SESSION_KEY = 'viki_supabase_session';
+        const CASH_PROFILE_KEY = 'viki_cash_profile';
         const EXPORT_SCHEMA_VERSION = 1;
         const MODEL_SETTINGS_KEYS = ['viki_model', 'viki_local', 'viki_no_llm'];
         const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -1394,9 +1512,10 @@
         let latestDailyFactsContext = '';
         let latestWeatherFactsContext = '';
         let latestDailyBriefingData = null;
-        let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
+        let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [] };
         let supabaseSession = null;
         let syncTimer = null;
+        let cashProfiles = [];
         let reminderClockOffsetMs = 0;
         const mobileLayoutQuery = window.matchMedia('(max-width: 780px)');
         let mobileRegistryVisible = false;
@@ -1483,10 +1602,361 @@
         async function loadRemoteState() {
             if (!supabaseSession?.user?.id) return false;
             const rows = await supabaseRequest(`/rest/v1/viki_state?user_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=state`);
-            if (rows[0]?.state) databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], ...rows[0].state };
+            if (rows[0]?.state) databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [], ...rows[0].state };
             else await persistRemoteState();
             setSupabaseStatus(`Connected as ${supabaseSession.user.email}. Remote registry synchronized.`);
+            await loadCashProfiles();
             return true;
+        }
+
+        function formatCash(value) {
+            return `$${Math.max(0, Number(value) || 0).toLocaleString('en-US')}`;
+        }
+
+        function setMoneyIndicator(value = 0) {
+            const indicator = document.getElementById('moneyIndicator');
+            indicator.textContent = formatCash(value);
+            indicator.setAttribute('aria-label', `Open slot machine. Cash balance: ${formatCash(value)}`);
+        }
+
+        function setCashControlsEnabled(enabled) {
+            ['newCashProfileName', 'createCashProfileButton', 'cashProfileSelect', 'saveCashProfileButton', 'openSlotMachineButton'].forEach(id => {
+                document.getElementById(id).disabled = !enabled;
+            });
+        }
+
+        function renderCashProfiles() {
+            const select = document.getElementById('cashProfileSelect');
+            const savedId = localStorage.getItem(CASH_PROFILE_KEY) || '';
+            select.replaceChildren(new Option('None', ''));
+            cashProfiles.forEach(profile => select.add(new Option(profile.name, profile.id)));
+            const savedProfileExists = cashProfiles.some(profile => profile.id === savedId);
+            select.value = savedProfileExists ? savedId : '';
+            if (savedId && !savedProfileExists) localStorage.removeItem(CASH_PROFILE_KEY);
+            const active = cashProfiles.find(profile => profile.id === select.value);
+            setMoneyIndicator(active?.balance || 0);
+            document.getElementById('cashProfileStatus').textContent = active
+                ? `${active.name} selected. Save to remember this profile in this browser.`
+                : 'None selected. Cash earnings are inactive.';
+        }
+
+        async function loadCashProfiles() {
+            if (!supabaseSession?.user?.id) return;
+            setCashControlsEnabled(true);
+            cashProfiles = Array.isArray(databaseState.cashProfiles) ? databaseState.cashProfiles : [];
+            cashProfiles.sort((a, b) => a.name.localeCompare(b.name));
+            databaseState.cashProfiles = cashProfiles;
+            renderCashProfiles();
+        }
+
+        async function createCashProfile() {
+            if (!supabaseSession?.user?.id) return;
+            const input = document.getElementById('newCashProfileName');
+            const name = input.value.trim();
+            if (!name) { document.getElementById('cashProfileStatus').textContent = 'Enter a profile name.'; return; }
+            if (name.toLowerCase() === 'none') { document.getElementById('cashProfileStatus').textContent = 'None is the built-in inactive profile. Choose a different name.'; return; }
+            if (cashProfiles.some(profile => profile.name.toLowerCase() === name.toLowerCase())) { document.getElementById('cashProfileStatus').textContent = 'A cash profile with that name already exists.'; return; }
+            const previousProfiles = [...cashProfiles];
+            try {
+                const created = {
+                    id: typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `cash-${Date.now()}`,
+                    name,
+                    balance: 0
+                };
+                cashProfiles.push(created);
+                databaseState.cashProfiles = cashProfiles;
+                await persistRemoteState();
+                input.value = '';
+                await loadCashProfiles();
+                document.getElementById('cashProfileSelect').value = created.id;
+                setMoneyIndicator(created.balance);
+                document.getElementById('cashProfileStatus').textContent = `${name} created. Select and save the profile to activate earnings.`;
+            } catch (error) {
+                cashProfiles = previousProfiles;
+                databaseState.cashProfiles = cashProfiles;
+                renderCashProfiles();
+                document.getElementById('cashProfileStatus').textContent = error.message;
+            }
+        }
+
+        async function previewCashProfile() {
+            const id = document.getElementById('cashProfileSelect').value;
+            const profile = cashProfiles.find(entry => entry.id === id);
+            setMoneyIndicator(profile?.balance || 0);
+            document.getElementById('cashProfileStatus').textContent = profile
+                ? `${profile.name}: ${formatCash(profile.balance)}. Save to use this profile.`
+                : 'None selected. Cash earnings are inactive.';
+        }
+
+        function saveCashProfile() {
+            const id = document.getElementById('cashProfileSelect').value;
+            if (id) localStorage.setItem(CASH_PROFILE_KEY, id);
+            else localStorage.removeItem(CASH_PROFILE_KEY);
+            const profile = cashProfiles.find(entry => entry.id === id);
+            setMoneyIndicator(profile?.balance || 0);
+            document.getElementById('cashProfileStatus').textContent = profile
+                ? `${profile.name} saved in this browser. Cash earnings are active.`
+                : 'None saved. Cash earnings are inactive.';
+        }
+
+        async function earnCashForRegistryAddition() {
+            const profileId = localStorage.getItem(CASH_PROFILE_KEY);
+            if (!profileId || !supabaseSession?.user?.id || !cashProfiles.some(profile => profile.id === profileId)) return;
+            const profile = cashProfiles.find(entry => entry.id === profileId);
+            profile.balance = Math.max(0, Number(profile.balance) || 0) + 250;
+            databaseState.cashProfiles = cashProfiles;
+            setMoneyIndicator(profile.balance);
+            queueRemoteSave();
+            showCashReward(250);
+        }
+
+        // --- CASH REWARD EFFECTS AND DAILY ALLOCATION ---
+        const SLOT_VALUES = [50, 150, 300, 500, 750, 1250];
+        let slotBetMultiplier = 1;
+        let slotSpinning = false;
+        let rewardAudioContext = null;
+        let rewardParticles = [];
+        let rewardAnimationFrame = null;
+        let slotCelebrationTimer = null;
+
+        function getRewardAudioContext() {
+            if (!rewardAudioContext) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) rewardAudioContext = new AudioContext();
+            }
+            if (rewardAudioContext?.state === 'suspended') void rewardAudioContext.resume().catch(() => {});
+            return rewardAudioContext;
+        }
+
+        function playRewardTone(frequency, duration, volume, delay = 0, type = 'sine') {
+            const audioCtx = getRewardAudioContext();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime + delay;
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            oscillator.type = type;
+            oscillator.frequency.setValueAtTime(frequency, now);
+            gain.gain.setValueAtTime(volume, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            oscillator.start(now);
+            oscillator.stop(now + duration);
+        }
+
+        function playInventoryAddSound() {
+            playRewardTone(800, 0.06, 0.08, 0);
+            playRewardTone(1200, 0.07, 0.07, 0.035);
+            playRewardTone(1700, 0.10, 0.05, 0.07);
+        }
+
+        function playJackpotSound() {
+            [523, 659, 784, 1047, 1319, 1568, 1047, 1319, 1568, 2093].forEach((frequency, index) => {
+                playRewardTone(frequency, 0.3 + index * 0.025, 0.07, index * 0.11, index > 3 ? 'triangle' : 'sine');
+            });
+        }
+
+        function startRewardParticles() {
+            if (rewardAnimationFrame) return;
+            const canvas = document.getElementById('rewardCanvas');
+            const context = canvas.getContext('2d');
+            let previous = performance.now();
+            const draw = now => {
+                const scale = window.devicePixelRatio || 1;
+                if (canvas.width !== innerWidth * scale || canvas.height !== innerHeight * scale) {
+                    canvas.width = innerWidth * scale; canvas.height = innerHeight * scale;
+                    canvas.style.width = `${innerWidth}px`; canvas.style.height = `${innerHeight}px`;
+                    context.setTransform(scale, 0, 0, scale, 0, 0);
+                }
+                const delta = Math.min(2, (now - previous) / 16.67); previous = now;
+                context.clearRect(0, 0, innerWidth, innerHeight);
+                rewardParticles = rewardParticles.filter(particle => now - particle.born < particle.life);
+                rewardParticles.forEach(particle => {
+                    particle.vy += particle.gravity * delta;
+                    particle.x += particle.vx * delta; particle.y += particle.vy * delta;
+                    if (particle.coin && particle.y + particle.radius > innerHeight) {
+                        particle.y = innerHeight - particle.radius;
+                        particle.vy *= -0.48; particle.vx *= 0.92;
+                    }
+                    if (particle.x < particle.radius || particle.x > innerWidth - particle.radius) particle.vx *= -0.7;
+                });
+                for (let i = 0; i < rewardParticles.length; i++) {
+                    const a = rewardParticles[i]; if (!a.coin) continue;
+                    for (let j = i + 1; j < rewardParticles.length; j++) {
+                        const b = rewardParticles[j]; if (!b.coin) continue;
+                        const dx = b.x - a.x, dy = b.y - a.y, distance = Math.hypot(dx, dy), minimum = a.radius + b.radius;
+                        if (distance > 0 && distance < minimum) {
+                            const nx = dx / distance, ny = dy / distance, push = (minimum - distance) / 2;
+                            a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+                            const av = a.vx * nx + a.vy * ny, bv = b.vx * nx + b.vy * ny;
+                            a.vx += (bv - av) * nx; a.vy += (bv - av) * ny;
+                            b.vx += (av - bv) * nx; b.vy += (av - bv) * ny;
+                        }
+                    }
+                }
+                rewardParticles.forEach(particle => {
+                    context.globalAlpha = Math.max(0, Math.min(1, (particle.life - (now - particle.born)) / 700));
+                    context.fillStyle = particle.color;
+                    context.shadowColor = particle.color; context.shadowBlur = particle.coin ? 5 : 10;
+                    context.beginPath(); context.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2); context.fill();
+                    if (particle.coin) {
+                        context.strokeStyle = '#fff09a'; context.lineWidth = 1; context.stroke();
+                    }
+                });
+                context.globalAlpha = 1; context.shadowBlur = 0;
+                if (rewardParticles.length) rewardAnimationFrame = requestAnimationFrame(draw);
+                else { context.clearRect(0, 0, innerWidth, innerHeight); rewardAnimationFrame = null; }
+            };
+            rewardAnimationFrame = requestAnimationFrame(draw);
+        }
+
+        function spawnRewardParticles(jackpot = false) {
+            const now = performance.now();
+            const colors = ['#ff3b3b', '#ffdc3b', '#61ff58', '#31d9ff', '#885cff', '#ff4fc8'];
+            const count = jackpot ? 54 : 18;
+            for (let index = 0; index < count; index++) {
+                const angle = jackpot ? (Math.PI * 2 * index / count) + Math.random() * 0.25 : 0;
+                rewardParticles.push(jackpot ? {
+                    x: innerWidth / 2, y: Math.min(180, innerHeight * 0.3), vx: Math.cos(angle) * (2 + Math.random() * 5), vy: Math.sin(angle) * (2 + Math.random() * 5),
+                    gravity: 0.045, radius: 2 + Math.random() * 2, color: colors[index % colors.length], born: now, life: 2600, coin: false
+                } : {
+                    x: innerWidth / 2 + (Math.random() - 0.5) * 120, y: 75 + Math.random() * 20, vx: (Math.random() - 0.5) * 2.4, vy: Math.random() * 1.5,
+                    gravity: 0.22, radius: 3 + Math.random() * 3, color: '#ffd21c', born: now, life: 3200 + Math.random() * 1000, coin: true
+                });
+            }
+            startRewardParticles();
+        }
+
+        function showCashReward(amount, jackpot = false) {
+            const float = document.createElement('div');
+            float.className = `reward-float${jackpot ? ' jackpot' : ''}`;
+            float.textContent = `+$${Number(amount).toLocaleString('en-US')}${jackpot ? ' JACKPOT' : ''}`;
+            document.body.appendChild(float);
+            float.addEventListener('animationend', () => float.remove(), { once: true });
+            if (jackpot) playJackpotSound(); else playInventoryAddSound();
+            spawnRewardParticles(jackpot);
+        }
+
+        function getActiveCashProfile() {
+            const id = localStorage.getItem(CASH_PROFILE_KEY);
+            return supabaseSession?.user?.id ? cashProfiles.find(profile => profile.id === id) : null;
+        }
+
+        function getCashDayKey() {
+            const now = getDeviceNow();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        }
+
+        function hasDailyFreeSpin(profile) { return profile?.lastFreeSpinDate !== getCashDayKey(); }
+
+        function updateSlotMachine() {
+            const profile = getActiveCashProfile();
+            const free = hasDailyFreeSpin(profile);
+            const bet = slotBetMultiplier * 250;
+            const display = document.getElementById('slotBetDisplay');
+            const spin = document.getElementById('slotSpinButton');
+            display.textContent = free ? 'FREE ×3' : `$${bet} ×${slotBetMultiplier}`;
+            document.getElementById('slotBetMinus').disabled = slotSpinning || free || slotBetMultiplier <= 1;
+            document.getElementById('slotBetPlus').disabled = slotSpinning || free || slotBetMultiplier >= 10 || !profile || profile.balance < (slotBetMultiplier + 1) * 250;
+            spin.disabled = slotSpinning || !profile || (!free && profile.balance < bet);
+            spin.textContent = slotSpinning ? 'SPINNING' : 'SPIN';
+            document.getElementById('slotResult').textContent = profile ? (free ? 'DAILY SPIN READY' : `BALANCE ${formatCash(profile.balance)}`) : 'SELECT AND SAVE A CASH PROFILE';
+        }
+
+        function openSlotMachine() {
+            const drawer = document.getElementById('slotDrawer');
+            const machine = document.getElementById('slotMachine');
+            drawer.hidden = false;
+            machine.classList.remove('exiting', 'pulling', 'pushing');
+            machine.classList.add('entering');
+            machine.addEventListener('animationend', () => machine.classList.remove('entering'), { once: true });
+            updateSlotMachine();
+        }
+
+        function closeSlotMachine() {
+            if (slotSpinning) return;
+            const drawer = document.getElementById('slotDrawer');
+            const machine = document.getElementById('slotMachine');
+            if (drawer.hidden || machine.classList.contains('exiting')) return;
+            clearSlotCelebration();
+            machine.classList.remove('entering', 'pulling', 'pushing');
+            machine.classList.add('exiting');
+            machine.addEventListener('animationend', () => {
+                machine.classList.remove('exiting');
+                drawer.hidden = true;
+            }, { once: true });
+        }
+
+        function randomSlotValue() {
+            const array = new Uint32Array(1);
+            crypto.getRandomValues(array);
+            return SLOT_VALUES[array[0] % SLOT_VALUES.length];
+        }
+
+        function animateReel(element, result, duration) {
+            element.classList.add('spinning');
+            const interval = setInterval(() => { element.textContent = formatCash(SLOT_VALUES[Math.floor(Math.random() * SLOT_VALUES.length)]); }, 75);
+            return new Promise(resolve => setTimeout(() => {
+                clearInterval(interval); element.classList.remove('spinning'); element.textContent = formatCash(result); resolve();
+            }, duration));
+        }
+
+        function clearSlotCelebration() {
+            clearTimeout(slotCelebrationTimer);
+            slotCelebrationTimer = null;
+            const machine = document.getElementById('slotMachine');
+            machine.classList.remove('win-flash', 'jackpot-flash');
+            document.querySelectorAll('.slot-reel').forEach(reel => reel.classList.remove('win-match', 'jackpot-match'));
+        }
+
+        function celebrateSlotWin(results, matchingValue, jackpot) {
+            clearSlotCelebration();
+            const className = jackpot ? 'jackpot-flash' : 'win-flash';
+            const reelClass = jackpot ? 'jackpot-match' : 'win-match';
+            document.getElementById('slotMachine').classList.add(className);
+            results.forEach((value, index) => {
+                if (value === matchingValue) document.getElementById(`slotReel${index}`).classList.add(reelClass);
+            });
+            slotCelebrationTimer = setTimeout(clearSlotCelebration, jackpot ? 8000 : 3000);
+        }
+
+        async function spinSlotMachine() {
+            if (slotSpinning) return;
+            const profile = getActiveCashProfile();
+            if (!profile) { updateSlotMachine(); return; }
+            clearSlotCelebration();
+            const free = hasDailyFreeSpin(profile);
+            const multiplier = free ? 3 : slotBetMultiplier;
+            const bet = free ? 0 : slotBetMultiplier * 250;
+            if (profile.balance < bet) { updateSlotMachine(); return; }
+            slotSpinning = true;
+            profile.balance -= bet;
+            if (free) profile.lastFreeSpinDate = getCashDayKey();
+            databaseState.cashProfiles = cashProfiles;
+            setMoneyIndicator(profile.balance);
+            queueRemoteSave();
+            updateSlotMachine();
+            const results = [randomSlotValue(), randomSlotValue(), randomSlotValue()];
+            const reelDurations = [850, 1550, 3000];
+            await Promise.all(results.map((result, index) => animateReel(document.getElementById(`slotReel${index}`), result, reelDurations[index])));
+            const counts = results.reduce((map, value) => map.set(value, (map.get(value) || 0) + 1), new Map());
+            const match = [...counts.entries()].find(([, count]) => count >= 2);
+            const jackpot = Boolean(match && match[1] === 3);
+            const winnings = match ? match[0] * multiplier * (jackpot ? 2 : 1) : 0;
+            if (winnings) {
+                profile.balance += winnings;
+                showCashReward(winnings, jackpot);
+                celebrateSlotWin(results, match[0], jackpot);
+            }
+            databaseState.cashProfiles = cashProfiles;
+            setMoneyIndicator(profile.balance);
+            queueRemoteSave();
+            slotSpinning = false;
+            updateSlotMachine();
+            document.getElementById('slotResult').textContent = winnings ? `${jackpot ? 'JACKPOT · ' : ''}+${formatCash(winnings)}` : 'NO MATCH';
+            const spinCost = free ? 'daily free spin' : `${formatCash(bet)} wager`;
+            const reelSummary = results.map(formatCash).join(' / ');
+            addMessage(`SLOT RESULT: ${reelSummary} · ${spinCost} at ×${multiplier} · ${jackpot ? 'JACKPOT · ' : ''}${winnings ? `${formatCash(winnings)} won` : 'no winnings'}.`, 'assistant');
         }
 
         async function persistRemoteState() {
@@ -1522,7 +1992,11 @@
         function disconnectSupabase() {
             supabaseSession = null;
             localStorage.removeItem(SUPABASE_SESSION_KEY);
-            databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [] };
+            databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [] };
+            cashProfiles = [];
+            setCashControlsEnabled(false);
+            document.getElementById('cashProfileSelect').replaceChildren(new Option('None', ''));
+            setMoneyIndicator(0);
             renderInventory(); renderSortingRules();
             setSupabaseStatus('Disconnected. Connect to load or save registry data.', true);
         }
@@ -2135,6 +2609,8 @@
             const aiStatus = document.getElementById('aiStatus');
             const aiStatusText = document.getElementById('aiStatusText');
 
+            if (!aiStatus || !aiStatusText) return;
+
             if (isLLMDisabled()) {
                 aiStatus.classList.remove('active');
                 aiStatusText.textContent = 'NO_LLM';
@@ -2211,6 +2687,7 @@
             }
 
             saveInventory(items);
+            void earnCashForRegistryAddition();
             return {
                 message: `Added ${quantity} ${unit || 'unit'}(s) of ${normalizedName} to ${finalLocation} registry.`,
                 details: { name: normalizedName, quantity, unit: unit || 'unit', note: note || '', location: finalLocation, shelfLife: finalShelfLife, category: finalCategory, addedDate: receivedAt.toISOString(), daysLeft: Math.ceil(((receivedAt.getTime() + finalShelfLife * MS_PER_DAY) - getDeviceNow()) / MS_PER_DAY) }
@@ -2512,6 +2989,7 @@
 
                 const inventoryItem = document.createElement('div');
                 inventoryItem.classList.add('inventory-item');
+                inventoryItem.classList.add(`location-${item.location}`);
                 inventoryItem.dataset.itemId = item.id;
                 if (itemClass) inventoryItem.classList.add(itemClass);
                 if (registryEditMode) {
@@ -3758,6 +4236,7 @@
             };
             databaseState.reminders = [...getReminders(), reminder];
             queueRemoteSave();
+            void earnCashForRegistryAddition();
             addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'} Repeat: ${reminder.repeat === 'none' ? 'ONCE' : reminder.repeat.toUpperCase()}.`, 'assistant');
         }
 
@@ -4047,6 +4526,30 @@
 
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
+
+            if (/^xoxo\s+reset$/i.test(text.trim())) {
+                const profile = getActiveCashProfile();
+                if (!profile) return { message: 'Connect to Supabase and save a cash profile before using this command.', responseRole: 'error' };
+                delete profile.lastFreeSpinDate;
+                databaseState.cashProfiles = cashProfiles;
+                queueRemoteSave();
+                updateSlotMachine();
+                return { message: `Daily free spin restored for ${profile.name}.` };
+            }
+
+            const developerCashCommand = text.trim().match(/^xoxo\s+sept\s*=\s*\$?([\d,]+(?:\.\d{1,2})?)$/i);
+            if (developerCashCommand) {
+                const profile = getActiveCashProfile();
+                if (!profile) return { message: 'Connect to Supabase and save a cash profile before using this command.', responseRole: 'error' };
+                const amount = Number(developerCashCommand[1].replace(/,/g, ''));
+                if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000) return { message: 'Developer cash amount must be greater than $0 and no more than $1,000,000,000.', responseRole: 'error' };
+                profile.balance = Math.round((Number(profile.balance) + amount) * 100) / 100;
+                databaseState.cashProfiles = cashProfiles;
+                setMoneyIndicator(profile.balance);
+                queueRemoteSave();
+                showCashReward(amount);
+                return { message: `Developer cash allocation complete: +${formatCash(amount)}. ${profile.name} balance: ${formatCash(profile.balance)}.` };
+            }
 
             // Device time is authoritative and does not require a network or AI call.
             if (/^(?:what(?:'s| is) (?:the )?(?:date|time|day)|what(?:'s| is) today|today(?:'s)? date|current (?:date|time))\??$/i.test(text.trim())) {
@@ -4672,6 +5175,42 @@
         });
         document.getElementById('connectSupabaseButton').addEventListener('click', connectSupabase);
         document.getElementById('disconnectSupabaseButton').addEventListener('click', disconnectSupabase);
+        document.getElementById('createCashProfileButton').addEventListener('click', createCashProfile);
+        document.getElementById('cashProfileSelect').addEventListener('change', previewCashProfile);
+        document.getElementById('saveCashProfileButton').addEventListener('click', saveCashProfile);
+        document.getElementById('moneyIndicator').addEventListener('click', openSlotMachine);
+        document.getElementById('openSlotMachineButton').addEventListener('click', openSlotMachine);
+        document.getElementById('closeSlotMachineButton').addEventListener('click', closeSlotMachine);
+        document.getElementById('slotSpinButton').addEventListener('click', spinSlotMachine);
+        document.getElementById('slotBetMinus').addEventListener('click', () => { slotBetMultiplier = Math.max(1, slotBetMultiplier - 1); updateSlotMachine(); });
+        document.getElementById('slotBetPlus').addEventListener('click', () => { slotBetMultiplier = Math.min(10, slotBetMultiplier + 1); updateSlotMachine(); });
+        document.getElementById('slotDrawer').addEventListener('click', event => { if (event.target.id === 'slotDrawer') closeSlotMachine(); });
+        let pagePullStart = null;
+        document.addEventListener('touchstart', event => {
+            if (mobileLayoutQuery.matches && document.getElementById('slotDrawer').hidden && event.touches[0]?.clientY <= 28) pagePullStart = event.touches[0].clientY;
+        }, { passive: true });
+        document.addEventListener('touchend', event => {
+            if (pagePullStart !== null && event.changedTouches[0]?.clientY - pagePullStart > 70) openSlotMachine();
+            pagePullStart = null;
+        }, { passive: true });
+        let machinePullStart = null;
+        document.getElementById('slotMachine').addEventListener('touchstart', event => { machinePullStart = event.touches[0]?.clientY ?? null; }, { passive: true });
+        document.getElementById('slotMachine').addEventListener('touchmove', event => {
+            if (machinePullStart === null) return;
+            const distance = event.touches[0].clientY - machinePullStart;
+            if (Math.abs(distance) > 32) {
+                event.preventDefault();
+                document.getElementById('slotMachine').classList.toggle('pulling', distance > 0);
+                document.getElementById('slotMachine').classList.toggle('pushing', distance < 0);
+            }
+        }, { passive: false });
+        document.getElementById('slotMachine').addEventListener('touchend', event => {
+            const distance = machinePullStart === null ? 0 : event.changedTouches[0]?.clientY - machinePullStart;
+            machinePullStart = null;
+            document.getElementById('slotMachine').classList.remove('pulling', 'pushing');
+            if (distance > 45) void spinSlotMachine();
+            else if (distance < -45) closeSlotMachine();
+        }, { passive: true });
         document.getElementById('saveAISettingsButton').addEventListener('click', () => {
             localStorage.setItem('viki_api_key', getApiKey());
             localStorage.setItem('viki_model', document.getElementById('modelSelect').value);
