@@ -106,9 +106,12 @@
         }
 
         .money-indicator {
+            appearance: none;
             color: var(--accent-cyan);
             border: 1px solid var(--border-color);
             background: #111113;
+            cursor: pointer;
+            font: inherit;
             padding: 3px 7px;
             white-space: nowrap;
         }
@@ -122,9 +125,9 @@
             pointer-events: none;
             position: fixed;
             text-shadow: 0 0 5px currentColor, 0 0 12px currentColor;
-            top: 64px;
+            top: calc(50% - 170px);
             transform: translateX(-50%);
-            z-index: 1201;
+            z-index: 1301;
         }
 
         .reward-float.jackpot { color: #ffd700; font-size: 1.35rem; animation-duration: 2.6s; }
@@ -134,7 +137,7 @@
             100% { opacity: 0; transform: translate(-50%, -58px) scale(1.08); }
         }
 
-        .reward-canvas { inset: 0; pointer-events: none; position: fixed; z-index: 1200; }
+        .reward-canvas { inset: 0; pointer-events: none; position: fixed; z-index: 1300; }
 
         .slot-drawer {
             align-items: center;
@@ -164,6 +167,8 @@
         .slot-machine.pushing { transform: translateY(-24px); }
         .slot-machine.entering { animation: slot-fall-in 0.48s cubic-bezier(0.18, 0.86, 0.3, 1.08); }
         .slot-machine.exiting { animation: slot-fly-out 0.3s ease-in forwards; }
+        .slot-machine.win-flash, .slot-reel.win-match { animation: slot-win-flash 0.3s steps(2, end) 10; }
+        .slot-machine.jackpot-flash, .slot-reel.jackpot-match { animation: slot-jackpot-rainbow 0.18s linear infinite; }
         @keyframes slot-fall-in {
             from { opacity: 0; transform: translateY(calc(-50vh - 100%)); }
             72% { opacity: 1; transform: translateY(18px); }
@@ -172,6 +177,18 @@
         @keyframes slot-fly-out {
             from { opacity: 1; transform: translateY(0); }
             to { opacity: 0; transform: translateY(calc(-50vh - 100%)); }
+        }
+        @keyframes slot-win-flash {
+            0%, 100% { border-color: #6e610e; color: #8cff3d; box-shadow: none; }
+            50% { border-color: #ffe900; color: #ffe900; box-shadow: 0 0 20px rgba(255, 233, 0, 0.9); }
+        }
+        @keyframes slot-jackpot-rainbow {
+            0% { border-color: #ff334c; color: #ff334c; box-shadow: 0 0 22px #ff334c; }
+            20% { border-color: #ffdc35; color: #ffdc35; box-shadow: 0 0 22px #ffdc35; }
+            40% { border-color: #4dff66; color: #4dff66; box-shadow: 0 0 22px #4dff66; }
+            60% { border-color: #38dcff; color: #38dcff; box-shadow: 0 0 22px #38dcff; }
+            80% { border-color: #b34dff; color: #b34dff; box-shadow: 0 0 22px #b34dff; }
+            100% { border-color: #ff3ebf; color: #ff3ebf; box-shadow: 0 0 22px #ff3ebf; }
         }
         .slot-heading { color: #ffe55c; font-size: 0.7rem; letter-spacing: 3px; text-align: center; }
         .slot-reels { display: grid; gap: 8px; grid-template-columns: repeat(3, 1fr); margin: 12px 0; }
@@ -1093,7 +1110,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.14.1 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><output class="money-indicator" id="moneyIndicator" aria-label="Cash balance">$0</output></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.14.2 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1408,7 +1425,7 @@
         <div class="slot-machine" id="slotMachine">
             <div class="slot-drawer-handle">•••</div>
             <button type="button" class="slot-close" id="closeSlotMachineButton" aria-label="Close cash allocation">×</button>
-            <h2 class="slot-heading" id="slotHeading">— DAILY CASH ALLOCATION —</h2>
+            <h2 class="slot-heading" id="slotHeading">— SLOT MACHINE —</h2>
             <div class="slot-reels" aria-live="polite">
                 <div class="slot-reel" id="slotReel0">$50</div>
                 <div class="slot-reel" id="slotReel1">$150</div>
@@ -1416,7 +1433,7 @@
             </div>
             <div class="slot-controls">
                 <button type="button" class="config-button" id="slotBetMinus" aria-label="Decrease bet">−</button>
-                <div class="slot-bet" id="slotBetDisplay">FREE ×2</div>
+                <div class="slot-bet" id="slotBetDisplay">FREE ×3</div>
                 <button type="button" class="config-button" id="slotBetPlus" aria-label="Increase bet">+</button>
                 <button type="button" class="config-button slot-spin" id="slotSpinButton">SPIN</button>
             </div>
@@ -1597,7 +1614,9 @@
         }
 
         function setMoneyIndicator(value = 0) {
-            document.getElementById('moneyIndicator').textContent = formatCash(value);
+            const indicator = document.getElementById('moneyIndicator');
+            indicator.textContent = formatCash(value);
+            indicator.setAttribute('aria-label', `Open slot machine. Cash balance: ${formatCash(value)}`);
         }
 
         function setCashControlsEnabled(enabled) {
@@ -1698,6 +1717,7 @@
         let rewardAudioContext = null;
         let rewardParticles = [];
         let rewardAnimationFrame = null;
+        let slotCelebrationTimer = null;
 
         function getRewardAudioContext() {
             if (!rewardAudioContext) {
@@ -1835,7 +1855,7 @@
             const bet = slotBetMultiplier * 250;
             const display = document.getElementById('slotBetDisplay');
             const spin = document.getElementById('slotSpinButton');
-            display.textContent = free ? 'FREE ×2' : `$${bet} ×${slotBetMultiplier}`;
+            display.textContent = free ? 'FREE ×3' : `$${bet} ×${slotBetMultiplier}`;
             document.getElementById('slotBetMinus').disabled = slotSpinning || free || slotBetMultiplier <= 1;
             document.getElementById('slotBetPlus').disabled = slotSpinning || free || slotBetMultiplier >= 10 || !profile || profile.balance < (slotBetMultiplier + 1) * 250;
             spin.disabled = slotSpinning || !profile || (!free && profile.balance < bet);
@@ -1858,6 +1878,7 @@
             const drawer = document.getElementById('slotDrawer');
             const machine = document.getElementById('slotMachine');
             if (drawer.hidden || machine.classList.contains('exiting')) return;
+            clearSlotCelebration();
             machine.classList.remove('entering', 'pulling', 'pushing');
             machine.classList.add('exiting');
             machine.addEventListener('animationend', () => {
@@ -1880,12 +1901,32 @@
             }, duration));
         }
 
+        function clearSlotCelebration() {
+            clearTimeout(slotCelebrationTimer);
+            slotCelebrationTimer = null;
+            const machine = document.getElementById('slotMachine');
+            machine.classList.remove('win-flash', 'jackpot-flash');
+            document.querySelectorAll('.slot-reel').forEach(reel => reel.classList.remove('win-match', 'jackpot-match'));
+        }
+
+        function celebrateSlotWin(results, matchingValue, jackpot) {
+            clearSlotCelebration();
+            const className = jackpot ? 'jackpot-flash' : 'win-flash';
+            const reelClass = jackpot ? 'jackpot-match' : 'win-match';
+            document.getElementById('slotMachine').classList.add(className);
+            results.forEach((value, index) => {
+                if (value === matchingValue) document.getElementById(`slotReel${index}`).classList.add(reelClass);
+            });
+            slotCelebrationTimer = setTimeout(clearSlotCelebration, jackpot ? 8000 : 3000);
+        }
+
         async function spinSlotMachine() {
             if (slotSpinning) return;
             const profile = getActiveCashProfile();
             if (!profile) { updateSlotMachine(); return; }
+            clearSlotCelebration();
             const free = hasDailyFreeSpin(profile);
-            const multiplier = free ? 2 : slotBetMultiplier;
+            const multiplier = free ? 3 : slotBetMultiplier;
             const bet = free ? 0 : slotBetMultiplier * 250;
             if (profile.balance < bet) { updateSlotMachine(); return; }
             slotSpinning = true;
@@ -1896,12 +1937,17 @@
             queueRemoteSave();
             updateSlotMachine();
             const results = [randomSlotValue(), randomSlotValue(), randomSlotValue()];
-            await Promise.all(results.map((result, index) => animateReel(document.getElementById(`slotReel${index}`), result, 750 + index * 480)));
+            const reelDurations = [850, 1550, 3000];
+            await Promise.all(results.map((result, index) => animateReel(document.getElementById(`slotReel${index}`), result, reelDurations[index])));
             const counts = results.reduce((map, value) => map.set(value, (map.get(value) || 0) + 1), new Map());
             const match = [...counts.entries()].find(([, count]) => count >= 2);
             const jackpot = Boolean(match && match[1] === 3);
             const winnings = match ? match[0] * multiplier * (jackpot ? 2 : 1) : 0;
-            if (winnings) { profile.balance += winnings; showCashReward(winnings, jackpot); }
+            if (winnings) {
+                profile.balance += winnings;
+                showCashReward(winnings, jackpot);
+                celebrateSlotWin(results, match[0], jackpot);
+            }
             databaseState.cashProfiles = cashProfiles;
             setMoneyIndicator(profile.balance);
             queueRemoteSave();
@@ -1910,7 +1956,7 @@
             document.getElementById('slotResult').textContent = winnings ? `${jackpot ? 'JACKPOT · ' : ''}+${formatCash(winnings)}` : 'NO MATCH';
             const spinCost = free ? 'daily free spin' : `${formatCash(bet)} wager`;
             const reelSummary = results.map(formatCash).join(' / ');
-            addMessage(`CASH ALLOCATION: ${reelSummary} · ${spinCost} at ×${multiplier} · ${jackpot ? 'JACKPOT · ' : ''}${winnings ? `${formatCash(winnings)} won` : 'no winnings'} · balance ${formatCash(profile.balance)}.`, 'system');
+            addMessage(`SLOT RESULT: ${reelSummary} · ${spinCost} at ×${multiplier} · ${jackpot ? 'JACKPOT · ' : ''}${winnings ? `${formatCash(winnings)} won` : 'no winnings'}.`, 'assistant');
         }
 
         async function persistRemoteState() {
@@ -4481,6 +4527,16 @@
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
 
+            if (/^xoxo\s+reset$/i.test(text.trim())) {
+                const profile = getActiveCashProfile();
+                if (!profile) return { message: 'Connect to Supabase and save a cash profile before using this command.', responseRole: 'error' };
+                delete profile.lastFreeSpinDate;
+                databaseState.cashProfiles = cashProfiles;
+                queueRemoteSave();
+                updateSlotMachine();
+                return { message: `Daily free spin restored for ${profile.name}.` };
+            }
+
             const developerCashCommand = text.trim().match(/^xoxo\s+sept\s*=\s*\$?([\d,]+(?:\.\d{1,2})?)$/i);
             if (developerCashCommand) {
                 const profile = getActiveCashProfile();
@@ -5122,6 +5178,7 @@
         document.getElementById('createCashProfileButton').addEventListener('click', createCashProfile);
         document.getElementById('cashProfileSelect').addEventListener('change', previewCashProfile);
         document.getElementById('saveCashProfileButton').addEventListener('click', saveCashProfile);
+        document.getElementById('moneyIndicator').addEventListener('click', openSlotMachine);
         document.getElementById('openSlotMachineButton').addEventListener('click', openSlotMachine);
         document.getElementById('closeSlotMachineButton').addEventListener('click', closeSlotMachine);
         document.getElementById('slotSpinButton').addEventListener('click', spinSlotMachine);
