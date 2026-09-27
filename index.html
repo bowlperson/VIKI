@@ -204,7 +204,7 @@
         .slot-controls .config-button { min-width: 38px; min-height: 36px; }
         .slot-bet { color: var(--accent-cyan); min-width: 118px; text-align: center; }
         .slot-spin { border-color: #8b7600; color: #ffe55c; min-width: 118px; }
-        .slot-status-row { display: flex; font-size: 0.68rem; justify-content: space-between; margin-top: 10px; }
+        .slot-status-row { display: flex; font-size: calc(0.68rem + 2px); justify-content: space-between; margin-top: 10px; }
         .slot-balance { color: var(--freezer); }
         .slot-winnings { color: #8cff3d; text-align: right; }
         .slot-luck { margin-top: 9px; }
@@ -232,9 +232,10 @@
         .slot-drawer.show-2048 .slot-machine { transform: translateX(-110vw); }
         .slot-drawer.show-2048 .game-2048 { transform: translateX(0); }
         .game-2048-heading { color: var(--accent-cyan); font-size: 0.78rem; letter-spacing: 4px; text-align: center; }
-        .game-2048-meta { display: flex; font-size: 0.68rem; justify-content: space-between; margin: 10px 0; }
+        .game-2048-meta { display: grid; font-size: calc(0.68rem + 2px); gap: 6px; grid-template-columns: 1fr 1fr 1fr; margin: 10px 0; }
         .game-2048-score { color: var(--freezer); }
-        .game-2048-prize { color: #8cff3d; }
+        .game-2048-highscore { color: var(--accent-cyan); text-align: center; }
+        .game-2048-prize { color: #8cff3d; text-align: right; }
         .game-2048-board { background: #080b0a; border: 1px solid #29443d; display: grid; gap: 5px; grid-template-columns: repeat(4, 1fr); padding: 5px; touch-action: none; }
         .game-2048-tile { align-items: center; aspect-ratio: 1; background: #111713; border: 1px solid #202b26; color: #f1f4ef; display: flex; font-size: clamp(0.85rem, 4vw, 1.35rem); justify-content: center; position: relative; text-shadow: 0 1px 2px #000; transform: translateZ(0); }
         .game-2048-tile[data-value="0"] { color: transparent; }
@@ -244,7 +245,7 @@
         .game-2048-tile[data-value="8"] { background: #94503d; }
         .game-2048-tile[data-value="16"] { background: #5d4d7c; }
         .game-2048-tile[data-value="32"] { background: #7e4658; }
-        .game-2048-tile[data-value="64"] { background: #3f7775; }
+        .game-2048-tile[data-value="64"] { background: #48773f; }
         .game-2048-tile[data-value="128"] { background: #8a7b36; }
         .game-2048-tile[data-value="256"] { background: #8b6234; }
         .game-2048-tile[data-value="512"] { background: #766c2d; }
@@ -262,8 +263,16 @@
         }
         .game-2048-controls { align-items: center; display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
         .game-2048-status { color: var(--accent-dim); font-size: 0.66rem; margin-top: 8px; min-height: 1em; text-align: center; }
-        .game-2048-prizes { color: var(--accent-dim); font-size: 0.56rem; line-height: 1.45; margin-top: 8px; text-align: center; }
         .game-2048.active .game-2048-bet-controls { display: none; }
+        .game-prize-popover { background: #090c0a; border: 1px solid var(--accent-cyan); inset: 42px 18px auto; padding: 12px; position: absolute; z-index: 6; }
+        .game-prize-popover[hidden] { display: none; }
+        .game-prize-title { color: var(--accent-cyan); font-size: 0.72rem; margin-bottom: 8px; text-align: center; }
+        .game-prize-grid { color: var(--terminal-fg); display: grid; font-size: 0.65rem; gap: 5px 12px; grid-template-columns: 1fr 1fr; }
+        .game-prize-grid span:nth-child(even) { color: #8cff3d; text-align: right; }
+        .game-2048-board.no-moves-flash { animation: no-moves-border 0.32s steps(2, end) 8; }
+        .game-no-moves-float { animation: no-moves-fade 2.8s ease-out forwards; color: var(--accent-red); font-size: 1.6rem; font-weight: bold; left: 50%; pointer-events: none; position: absolute; text-shadow: 0 0 12px currentColor; top: 48%; transform: translate(-50%, -50%); z-index: 7; }
+        @keyframes no-moves-border { 50% { border-color: var(--accent-red); box-shadow: 0 0 14px var(--accent-red); } }
+        @keyframes no-moves-fade { 0% { opacity: 0; transform: translate(-50%, -40%) scale(0.85); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -75%) scale(1.08); } }
 
         .operators-easter-egg {
             appearance: none;
@@ -1172,7 +1181,7 @@
     <div class="header">
         <div class="header-left">
             <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
-            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.16.2 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
+            <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v1.17.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
         </div>
         <div class="system-status">
             <div class="status-item">
@@ -1291,7 +1300,6 @@
                     <span class="input-prompt">></span>
                     <input type="text" id="messageInput" placeholder="Enter command or query..." onkeypress="handleKeyPress(event)">
                     <button class="mic-btn" id="micButton" onclick="toggleVoiceInput()" aria-label="Start voice input" title="Start voice input">MIC</button>
-                    <button class="mute-btn" id="muteButton" type="button" onclick="toggleSpeechMute()" aria-label="Mute VIKI speech" aria-pressed="false" title="Mute or unmute VIKI speech">VOICE ON</button>
                     <button class="send-btn" onclick="sendMessage()">EXECUTE</button>
                 </div>
                 <div class="voice-status" id="voiceStatus">VOICE: STANDBY</div>
@@ -1358,7 +1366,7 @@
                 <section class="settings-section">
                     <div class="config-title">// VOICE SYNTHESIS</div>
                     <div class="toggle-row">
-                        <input type="checkbox" id="speechEnabled" checked>
+                        <input type="checkbox" id="speechEnabled">
                         <label class="toggle-label" for="speechEnabled">SPEAK VIKI RESPONSES</label>
                     </div>
                     <div class="config-row">
@@ -1374,6 +1382,7 @@
                         <input class="config-input" type="range" id="speechVolume" min="0" max="1" step="0.1" value="1">
                     </div>
                     <div class="config-help" id="speechSupportNote">Uses voices installed in this browser or operating system.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="saveSpeechSettingsButton">SAVE_VOICE_SETTINGS</button></div>
                 </section>
                 <section class="settings-section">
                     <div class="config-title">// WAKE WORD</div>
@@ -1513,14 +1522,19 @@
             <div class="slot-drawer-handle" id="game2048Handle">•••</div>
             <button type="button" class="slot-close" id="close2048Button" aria-label="Close 2048">×</button>
             <h2 class="game-2048-heading">— 2048 —</h2>
-            <div class="game-2048-meta"><span class="game-2048-score" id="game2048Score">SCORE 0</span><span class="game-2048-prize" id="game2048Prize">PRIZES $0</span></div>
+            <div class="game-2048-meta"><span class="game-2048-score" id="game2048Score">SCORE 0</span><span class="game-2048-highscore" id="game2048HighScore">HIGH 0</span><span class="game-2048-prize" id="game2048Prize">PRIZES $0</span></div>
             <div class="game-2048-board" id="game2048Board" role="grid" aria-label="2048 board"></div>
             <div class="game-2048-controls">
                 <div class="game-2048-bet-controls" id="game2048BetDisplay">BET UP TO $250</div>
                 <button type="button" class="config-button" id="game2048StartButton">START</button>
+                <button type="button" class="config-button" id="game2048EndButton" hidden>END</button>
+                <button type="button" class="config-button" id="game2048PrizesButton" aria-label="Show prize table">$</button>
             </div>
             <div class="game-2048-status" id="game2048Status">SWIPE RIGHT TO RETURN</div>
-            <div class="game-2048-prizes">1K→$100 · 2.5K→$250 · 5K→$500 · 10K→$2K · 20K→$4K · 35K→$9K · 50K→$20K · 75K→$30K · 100K→$69,420</div>
+            <div class="game-prize-popover" id="game2048PrizePopover" hidden>
+                <div class="game-prize-title">PRIZE ALLOCATION</div>
+                <div class="game-prize-grid"><span>1,000</span><span>$100</span><span>2,500</span><span>$250</span><span>5,000</span><span>$500</span><span>10,000</span><span>$2,000</span><span>20,000</span><span>$4,000</span><span>35,000</span><span>$9,000</span><span>50,000</span><span>$20,000</span><span>75,000</span><span>$30,000</span><span>100,000</span><span>$69,420</span></div>
+            </div>
         </div>
     </div>
     <canvas class="reward-canvas" id="rewardCanvas" aria-hidden="true"></canvas>
@@ -1992,6 +2006,7 @@
             const game = document.getElementById('game2048');
             const activePanel = drawer.classList.contains('show-2048') ? game : machine;
             if (drawer.hidden || activePanel.classList.contains('exiting')) return;
+            document.getElementById('game2048PrizePopover').hidden = true;
             clearSlotCelebration();
             activePanel.classList.remove('entering', 'pulling', 'pushing');
             activePanel.classList.add('exiting');
@@ -2183,15 +2198,27 @@
             container.classList.toggle('active', Boolean(game?.active));
             const over = Boolean(game?.active && !game.board.includes(0) && get2048MergeableIndexes(game.board).size === 0);
             container.classList.toggle('game-over', over);
+            if (profile && game) profile.game2048HighScore = Math.max(Number(profile.game2048HighScore) || 0, Number(game.score) || 0);
             document.getElementById('game2048Score').textContent = `SCORE ${(game?.score || 0).toLocaleString('en-US')}`;
+            document.getElementById('game2048HighScore').textContent = `HIGH ${(profile?.game2048HighScore || 0).toLocaleString('en-US')}`;
             document.getElementById('game2048Prize').textContent = `PRIZES ${formatCash(game?.totalPrizes || 0)}`;
             const start = document.getElementById('game2048StartButton');
             const entryCost = Math.min(250, Math.max(0, Number(profile?.balance) || 0));
             start.textContent = over ? `NEW ${entryCost ? formatCash(entryCost) : 'FREE'}` : `START ${entryCost ? formatCash(entryCost) : 'FREE'}`;
             start.hidden = Boolean(game?.active && !over);
             start.disabled = !profile;
+            document.getElementById('game2048EndButton').hidden = !game?.active;
             document.getElementById('game2048BetDisplay').textContent = entryCost ? `BET ${formatCash(entryCost)}` : 'BET FREE';
             document.getElementById('game2048Status').textContent = !profile ? 'SELECT AND SAVE A CASH PROFILE' : over ? 'NO MOVES · START A NEW GAME' : game.active ? 'USE ARROWS OR SWIPE THE BOARD' : 'PLACE BET TO BEGIN';
+            if (over && !game.noMovesShown) {
+                game.noMovesShown = true;
+                boardElement.classList.add('no-moves-flash');
+                const notice = document.createElement('div');
+                notice.className = 'game-no-moves-float'; notice.textContent = 'NO MOVES';
+                container.appendChild(notice);
+                notice.addEventListener('animationend', () => notice.remove(), { once: true });
+                setTimeout(() => boardElement.classList.remove('no-moves-flash'), 2700);
+            }
         }
 
         function show2048() {
@@ -2201,6 +2228,7 @@
         }
 
         function showSlotMachine() {
+            document.getElementById('game2048PrizePopover').hidden = true;
             document.getElementById('slotDrawer').classList.remove('show-2048');
             updateSlotMachine();
         }
@@ -2215,6 +2243,22 @@
             databaseState.cashProfiles = cashProfiles;
             setMoneyIndicator(profile.balance); queueRemoteSave(); render2048();
             addMessage(`2048 GAME: ${entryCost ? `${formatCash(entryCost)} wager placed` : 'free entry activated'}.`, 'assistant');
+        }
+
+        function end2048Game() {
+            const profile = getActiveCashProfile();
+            const game = get2048Game(profile);
+            if (!game?.active || !window.confirm('End and reset the current 2048 game? Your high score will be preserved.')) return;
+            profile.game2048HighScore = Math.max(Number(profile.game2048HighScore) || 0, Number(game.score) || 0);
+            profile.game2048 = { board: Array(16).fill(0), score: 0, active: false, claimed: [], totalPrizes: 0 };
+            game2048Animation = null;
+            databaseState.cashProfiles = cashProfiles; queueRemoteSave(); render2048();
+            addMessage('2048 game ended and board reset. High score preserved.', 'assistant');
+        }
+
+        function toggle2048PrizeTable() {
+            const popover = document.getElementById('game2048PrizePopover');
+            popover.hidden = !popover.hidden;
         }
 
         function slide2048Line(values) {
@@ -3644,23 +3688,24 @@
 
         function getSpeechSettings() {
             try {
-                return { enabled: true, muted: false, voice: '', rate: 1, volume: 1, ...JSON.parse(localStorage.getItem(SPEECH_SETTINGS_KEY) || '{}') };
+                return { enabled: false, muted: false, voice: '', rate: 1, volume: 1, ...JSON.parse(localStorage.getItem(SPEECH_SETTINGS_KEY) || '{}') };
             } catch (error) {
-                return { enabled: true, muted: false, voice: '', rate: 1, volume: 1 };
+                return { enabled: false, muted: false, voice: '', rate: 1, volume: 1 };
             }
         }
 
         function saveSpeechSettings() {
             const settings = {
                 enabled: document.getElementById('speechEnabled').checked,
-                muted: speechMuted,
+                muted: false,
                 voice: document.getElementById('speechVoice').value,
                 rate: Number(document.getElementById('speechRate').value),
                 volume: Number(document.getElementById('speechVolume').value)
             };
             localStorage.setItem(SPEECH_SETTINGS_KEY, JSON.stringify(settings));
             if (!settings.enabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
-            updateMuteButton();
+            speechMuted = false;
+            addMessage(`Voice synthesis settings saved locally. Speech is ${settings.enabled ? 'enabled' : 'disabled'}.`, 'system');
         }
 
         function populateSpeechVoices() {
@@ -3681,21 +3726,6 @@
             select.value = availableSpeechVoices.some(voice => voice.name === selected) ? selected : '';
         }
 
-        function updateMuteButton() {
-            const button = document.getElementById('muteButton');
-            const enabled = document.getElementById('speechEnabled').checked;
-            const muted = speechMuted || !enabled;
-            button.textContent = muted ? 'VOICE OFF' : 'VOICE ON';
-            button.setAttribute('aria-pressed', String(muted));
-            button.setAttribute('aria-label', muted ? 'Unmute VIKI speech' : 'Mute VIKI speech');
-        }
-
-        function toggleSpeechMute() {
-            speechMuted = !speechMuted;
-            if (speechMuted && 'speechSynthesis' in window) window.speechSynthesis.cancel();
-            saveSpeechSettings();
-        }
-
         function speakMessage(text) {
             if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
             const settings = getSpeechSettings();
@@ -3710,24 +3740,19 @@
 
         function initializeSpeechSynthesis() {
             const settings = getSpeechSettings();
-            speechMuted = settings.muted;
+            speechMuted = false;
             document.getElementById('speechEnabled').checked = settings.enabled;
             document.getElementById('speechRate').value = settings.rate;
             document.getElementById('speechVolume').value = settings.volume;
             if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
                 document.getElementById('speechEnabled').disabled = true;
                 document.getElementById('speechVoice').disabled = true;
-                document.getElementById('muteButton').disabled = true;
+                document.getElementById('saveSpeechSettingsButton').disabled = true;
                 document.getElementById('speechSupportNote').textContent = 'Speech synthesis is not supported by this browser.';
-                document.getElementById('muteButton').textContent = 'NO VOICE';
                 return;
             }
             populateSpeechVoices();
             window.speechSynthesis.addEventListener('voiceschanged', populateSpeechVoices);
-            ['speechEnabled', 'speechVoice', 'speechRate', 'speechVolume'].forEach(id => {
-                document.getElementById(id).addEventListener('change', saveSpeechSettings);
-            });
-            updateMuteButton();
         }
 
         function addMessage(text, type = 'assistant') {
@@ -5507,6 +5532,7 @@
         document.getElementById('createCashProfileButton').addEventListener('click', createCashProfile);
         document.getElementById('cashProfileSelect').addEventListener('change', previewCashProfile);
         document.getElementById('saveCashProfileButton').addEventListener('click', saveCashProfile);
+        document.getElementById('saveSpeechSettingsButton').addEventListener('click', saveSpeechSettings);
         document.getElementById('moneyIndicator').addEventListener('click', openSlotMachine);
         document.getElementById('openSlotMachineButton').addEventListener('click', openSlotMachine);
         document.getElementById('closeSlotMachineButton').addEventListener('click', closeSlotMachine);
@@ -5546,6 +5572,8 @@
             else if (distance < -45) closeSlotMachine();
         }, { passive: true });
         document.getElementById('game2048StartButton').addEventListener('click', start2048Game);
+        document.getElementById('game2048EndButton').addEventListener('click', end2048Game);
+        document.getElementById('game2048PrizesButton').addEventListener('click', toggle2048PrizeTable);
         document.getElementById('close2048Button').addEventListener('click', closeSlotMachine);
         let gameBoardTouchStart = null;
         document.getElementById('game2048Board').addEventListener('touchstart', event => {
