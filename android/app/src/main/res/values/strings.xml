@@ -1,0 +1,6 @@
+<resources>
+    <string name="setup_notifications_allowed">01 / Notifications: Allowed</string>
+    <string name="setup_notifications_blocked">01 / Notifications: Not allowed</string>
+    <string name="setup_exact_allowed">02 / Precise alarms: Allowed</string>
+    <string name="setup_exact_optional">02 / Precise alarms: Optional access not enabled</string>
+</resources>

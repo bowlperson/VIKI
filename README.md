@@ -2,6 +2,32 @@
 
 VIKI (Virtual Inventory Keeper Intelligence) is a browser-based household inventory assistant for tracking nutritional assets, degradation timelines, locations, and quantities.
 
+## Mobile interface (0.2.0)
+
+[Mobile Settings preview](docs/mobile-settings.png)
+
+VIKI now uses four phone-first views: **Chat**, **Assets**, **Reminders**, and **Settings**. The same interface remains available as HTML/PWA for computer testing. Location chips put Fridge, Freezer, and Cupboard above the asset filters. Settings has searchable Appearance, Storage, Alerts, Assistant, and Advanced categories, with a persistent Back control.
+
+Appearance offers neon mint, electric violet, amber, custom colors with readability protection, installed font choices, text scaling, and reduced motion. No remote fonts or theme assets are fetched. Android defaults to immersive fullscreen with transient system bars revealed by an edge swipe. Native viewport margins protect the controls from the Pixel cutout, system bars, and keyboard. You can turn immersive mode off in Appearance.
+
+Android shows a first-launch permission setup for notifications and precise alarms. Continue without alerts remains available; core local inventory needs neither permission. Reopen setup in Settings → Alerts. Selecting Enable notifications and granting permission also enables app alerts; skipping does not silently change an existing choice.
+
+The command field guide appears on first launch and once each local calendar day. Type **help** or tap Help to show it anytime, including while a confirmation is pending. Tapping an example fills the composer without sending it.
+
+**Reminders → History** archives delivered notifications and this app’s email sends/failures. Filter by unread, notifications, or email, mark read/unread, and reveal blurred read content. Opening an Android notification marks that occurrence read. Clearing read messages leaves scheduled reminders and delivery deduplication intact. This is not access to an email inbox. Previous notification history and recorded successful reminder emails migrate when their old data contains enough detail; missing old message bodies cannot be reconstructed.
+
+### Storage location, usage, and weekly backups
+
+Settings → Storage shows the active database location, exact current JSON data size, SQLite file usage on Android (origin usage estimates in browsers), selected backup folder, last backup, and backup file totals. Size updates follow local saves and refresh while Settings is open. SQLite reuses freed pages, so deleting items can shrink the JSON payload while the allocated database file remains steady.
+
+Choose a folder using Android’s system folder picker. The live SQLite database stays in app-private storage; arbitrary document folders cannot safely host a live SQLite database. The selected folder stores portable JSON copies, and choosing another folder preserves existing local inventory and earlier copies. Choose a local folder you control: backup files are unencrypted JSON and can contain reminder text and recipient addresses. No broad file permission or Google service is needed.
+
+Enable weekly backups explicitly. Android schedules battery-friendly approximate weekly checks, restored after reboot/unlock; Doze, force-stop, or inaccessible folder grants can delay them. The app skips unchanged data, verifies new file contents before accepting the backup, and retains a configurable 4/8/12 automatic weekly copies. Manual dated copies are never rotated. No attachments or large image assets are included. Provider credentials are excluded.
+
+Manual Export/Import remains available even without a selected folder. The HTML version supports directory backups where the browser implements folder access, with checks only while VIKI is open; other browsers use ordinary downloads/uploads. Browser permissions may need renewal. Weekly copies have the same version-1 JSON format as manual exports; appearance and permission choices remain device-specific.
+
+Supabase support remains available but is not required or expanded in this update. On-device-only storage is the default.
+
 ## Run the desktop HTML app
 
 VIKI shares one HTML/JavaScript interface between the browser version and the Android APK. Inventory, presets, favorites, reminders, and cash profiles save locally by default: IndexedDB in the browser and SQLite in Android. No account, Supabase project, AI service, or Google service is needed for core operation. New installations start in **NO_LLM mode**; unknown items ask for shelf-life days locally.
