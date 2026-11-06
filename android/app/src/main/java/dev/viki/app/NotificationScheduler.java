@@ -28,6 +28,7 @@ final class NotificationScheduler {
             .put("enabled",notificationsAllowed(c)).put("exactAlarms",exactAllowed(c)).put("nextAt",VikiDatabase.get(c).nextTime());
     }
     static synchronized void reschedule(Context c) {
+        VikiDatabase.get(c).removeRetiredReminders();
         AlarmManager alarms=c.getSystemService(AlarmManager.class);
         PendingIntent pending=PendingIntent.getBroadcast(c,0,new Intent(c,AlarmReceiver.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         alarms.cancel(pending);
@@ -41,10 +42,11 @@ final class NotificationScheduler {
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,at,pending);
     }
     static synchronized void deliver(Context c) {
+        VikiDatabase.get(c).removeRetiredReminders();
         if(!notificationsAllowed(c))return;
         VikiDatabase db=VikiDatabase.get(c);
         NotificationManager manager=c.getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(new NotificationChannel(CHANNEL,"Inventory and reminders",NotificationManager.IMPORTANCE_DEFAULT));
+        manager.createNotificationChannel(new NotificationChannel(CHANNEL,"Inventory alerts",NotificationManager.IMPORTANCE_DEFAULT));
         try {
             long now=System.currentTimeMillis();JSONArray due=db.due(now);
             for(int i=0;i<due.length();i++) {

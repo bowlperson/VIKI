@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
     'use strict';
     let config, panel, tabs, list, errorLabel;
-    let visible = false, section = 'scheduled', selectedFilter = 'all', displayCount = 30;
+    let visible = false, section = 'history', selectedFilter = 'all', displayCount = 30;
     let importing = false;
     let sequence = 0;
     let pending = Promise.resolve();
@@ -140,7 +140,7 @@
     async function clearRead() {
         const current = entries(), removed = current.filter(entry => entry.read);
         if (!removed.length) return;
-        if (!root.confirm(`Remove ${removed.length} read message(s) from this device’s activity inbox? Scheduled reminders are kept.`)) return;
+        if (!root.confirm(`Remove ${removed.length} read message(s) from this device’s activity inbox? Inventory data is kept.`)) return;
         for(const entry of removed)if(entry.nativeEventId&&root.VikiNative?.clearNotificationHistoryEntry){
             if(root.VikiNative.clearNotificationHistoryEntry(entry.nativeEventId,entry.nativeOccurrence)===false)throw new Error('Android could not clear the selected archive entry.');
         }
@@ -163,7 +163,7 @@
         return element;
     }
 
-    function setSection(next) { section = next === 'history' ? 'history' : 'scheduled'; render(); applyVisibility(); }
+    function setSection(next) { section = 'history'; render(); applyVisibility(); }
     function applyVisibility() {
         if (!panel || !tabs) return;
         panel.hidden = !visible || section !== 'history';
@@ -262,7 +262,7 @@
         tabs = root.document.getElementById('reminderInboxTabs');
         if (!tabs) { tabs = node('div', 'viki-inbox-tabs'); tabs.id = 'reminderInboxTabs'; inventory?.before(tabs); }
         tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Reminder views'); tabs.replaceChildren();
-        for (const [key, label] of [['scheduled','Scheduled'],['history','History']]) {
+        for (const [key, label] of [['history','Notifications & email history']]) {
             const tab = button(label, () => setSection(key)); tab.dataset.section = key; tab.setAttribute('role', 'tab'); tabs.append(tab);
         }
         applyVisibility();

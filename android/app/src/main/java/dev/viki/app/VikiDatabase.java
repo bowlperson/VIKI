@@ -129,6 +129,7 @@ final class VikiDatabase extends SQLiteOpenHelper {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM events WHERE at<=? ORDER BY at LIMIT 100",new String[]{Long.toString(now)})) { while(c.moveToNext()) result.put(new JSONObject(c.getString(0))); }
         return result;
     }
+    synchronized void removeRetiredReminders(){getWritableDatabase().delete("events","id LIKE ?",new String[]{"reminder:%"});}
     synchronized long nextTime() {
         try(Cursor c=getReadableDatabase().rawQuery("SELECT MIN(at) FROM events",null)) { return c.moveToFirst()&&!c.isNull(0)?c.getLong(0):-1; }
     }

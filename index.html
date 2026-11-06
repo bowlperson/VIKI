@@ -1175,13 +1175,9 @@
     <link rel="stylesheet" href="mobile-ui.css">
 </head>
 <body>
-    <div class="alert-banner" id="expiringAlert">
-        CRITICAL: Nutritional assets approaching degradation threshold
-    </div>
-
     <div class="header">
         <div class="header-left">
-            <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
+            <div class="header-brand-row">            <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button><span id="expiringCount" class="expiry-count" role="status" hidden></span></div>
             <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v2.0.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
         </div>
         <div class="system-status">
@@ -1197,8 +1193,9 @@
     <div class="container">
         <div class="sidebar" id="registrySidebar">
             <div class="sidebar-header">
-                <button type="button" class="sidebar-title registry-title-button" id="registryTitleButton" aria-label="Switch to reminder registry" title="Switch between assets and reminders">ASSET_REGISTRY</button>
+                <button type="button" class="sidebar-title registry-title-button" id="registryTitleButton" aria-label="Switch to notification history" title="Switch between assets and reminders">ASSET_REGISTRY</button>
                 <div class="registry-actions">
+                    <button type="button" class="config-button" id="notificationGamesButton" hidden>CASH GAMES</button>
                     <div class="item-count" id="itemCount">0 assets</div>
                     <button type="button" class="config-button" id="registryLockButton" aria-pressed="false" title="Unlock manual registry editing">🔒</button>
                     <button type="button" class="config-button registry-edit-action" id="saveRegistryButton">SAVE</button>
@@ -1292,7 +1289,6 @@
             <div class="input-area">
                 <div class="quick-commands">
                     <button class="quick-cmd" type="button" id="commandGuideButton">HELP</button>
-                    <button class="quick-cmd" onclick="quickMessage('Add reminder')">REMINDER</button>
                     <button class="quick-cmd" onclick="quickMessage('What is expiring')">DEGRADATION</button>
                     <button class="quick-cmd" onclick="quickMessage('Full inventory')">REGISTRY</button>
                     <button class="quick-cmd" onclick="quickMessage('Daily briefing')">DAILY</button>
@@ -1453,14 +1449,14 @@
                 </section>
                 <section class="settings-section">
                     <div class="config-title">// ON-DEVICE NOTIFICATIONS</div>
-                    <label class="config-label"><input id="localNotificationsEnabled" type="checkbox"> Enable local alerts and reminders</label>
+                    <label class="config-label"><input id="localNotificationsEnabled" type="checkbox"> Enable inventory alerts</label>
                     <label class="config-label"><input id="dailySummaryEnabled" type="checkbox"> Daily inventory summary</label>
                     <div class="config-row"><label class="config-label" for="summaryTime">SUMMARY_TIME (DEVICE TIME)</label><input class="config-input" id="summaryTime" type="time" value="09:00"></div>
                     <label class="config-label"><input id="milestonesEnabled" type="checkbox"> Item milestone alerts (30%, 15%, expired once)</label>
-                    <label class="config-label"><input id="localRemindersEnabled" type="checkbox"> Scheduled reminders</label>
-                    <div class="config-actions"><button class="config-button" id="permissionSetupButton" type="button" hidden>Android permission setup</button><button class="config-button" id="saveNotificationSettingsButton" type="button">SAVE_NOTIFICATIONS</button><button class="config-button" id="exactAlarmButton" type="button">ALLOW_PRECISE_REMINDERS</button></div>
+
+                    <div class="config-actions"><button class="config-button" id="permissionSetupButton" type="button" hidden>Android permission setup</button><button class="config-button" id="saveNotificationSettingsButton" type="button">SAVE_NOTIFICATIONS</button><button class="config-button" id="exactAlarmButton" type="button">ALLOW_PRECISE_ALERTS</button></div>
                     <div class="config-help" id="notificationStatus" role="status"></div>
-                    <div class="config-help">Android can notify while closed, including Doze when precise-alarm access is allowed. Force-stopping, disabled notifications, or powering off prevents delivery. Browser reminders run only while VIKI is open. Reminder times use Tucson time; summaries use your device time. Email delivery is a separate optional feature.</div>
+                    <div class="config-help">Android can notify while closed, including Doze when precise-alarm access is allowed. Force-stopping, disabled notifications, or powering off prevents delivery. Browser reminders run only while VIKI is open. Summaries use your device time. Email delivery is a separate optional feature.</div>
                     <div id="localNotificationHistory"></div>
                 </section>
                 <section class="settings-section">
@@ -1499,17 +1495,7 @@
                     <div class="config-help">Sends once at exactly 30% remaining and once at exactly 15% remaining only when more than 3 days remain, then once per day at 3 days or less. Browser-safe EmailJS public credentials only. Template variables: to_email, item_name, quantity, location, days_left, percentage_remaining, alert_type, message.</div>
                     <div class="config-actions"><button type="button" class="config-button" id="saveEmailSettingsButton">SAVE_EMAIL_SETTINGS</button></div>
                 </section>
-                <section class="settings-section">
-                    <div class="config-title">// REMINDER EMAILS [EMAILJS]</div>
-                    <div class="toggle-row"><input type="checkbox" id="reminderEmailsEnabled"><label class="toggle-label" for="reminderEmailsEnabled">SEND SCHEDULED REMINDERS</label></div>
-                    <div class="config-row"><label class="config-label" for="abelReminderEmail">ABEL'S EMAIL</label><input class="config-input" id="abelReminderEmail" type="email" placeholder="abel@example.com"></div>
-                    <div class="config-row"><label class="config-label" for="annaReminderEmail">ANNA'S EMAIL</label><input class="config-input" id="annaReminderEmail" type="email" placeholder="anna@example.com"></div>
-                    <div class="config-row"><label class="config-label" for="reminderEmailJsServiceId">EMAILJS_SERVICE_ID</label><input class="config-input" id="reminderEmailJsServiceId" type="text" placeholder="service_xxxxx"></div>
-                    <div class="config-row"><label class="config-label" for="reminderEmailJsTemplateId">EMAILJS_TEMPLATE_ID</label><input class="config-input" id="reminderEmailJsTemplateId" type="text" placeholder="template_xxxxx"></div>
-                    <div class="config-row"><label class="config-label" for="reminderEmailJsPublicKey">EMAILJS_PUBLIC_KEY</label><input class="config-input" id="reminderEmailJsPublicKey" type="password" placeholder="PUBLIC_KEY"></div>
-                    <div class="config-help">Separate EmailJS template for reminders. Template variables: to_email, reminder_subject, reminder_body, reminder_datetime, reminder_number, reminder_1_datetime, reminder_2_datetime. The same email is sent at Reminder 1 and optional Reminder 2 while VIKI is open.</div>
-                    <div class="config-actions"><button type="button" class="config-button" id="saveReminderEmailSettingsButton">SAVE_REMINDER_EMAIL_SETTINGS</button></div>
-                </section>
+
             </div>
         </div>
     </section>
@@ -1568,6 +1554,7 @@
     <script src="viki-data.js"></script>
     <script src="viki-inbox.js"></script>
     <script src="mobile-ui.js"></script>
+    <script src="viki-terminal.js"></script>
     <script>
         // --- CONFIGURATION ---
         const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions';
@@ -1976,14 +1963,14 @@
             startRewardParticles();
         }
 
-        function showCashReward(amount, jackpot = false) {
+        function showCashReward(amount, jackpot = false, gameWin = false) {
             const float = document.createElement('div');
             float.className = `reward-float${jackpot ? ' jackpot' : ''}`;
             float.textContent = `+$${Number(amount).toLocaleString('en-US')}${jackpot ? ' JACKPOT' : ''}`;
             document.body.appendChild(float);
             float.addEventListener('animationend', () => float.remove(), { once: true });
             if (jackpot) playJackpotSound(); else playInventoryAddSound();
-            spawnRewardParticles(jackpot);
+            if(gameWin)spawnRewardParticles(jackpot);
         }
 
         function getActiveCashProfile() {
@@ -2122,7 +2109,7 @@
             profile.slotLuck = jackpot ? 0 : Math.min(39, (Number(profile.slotLuck) || 0) + 1);
             if (winnings) {
                 profile.balance += winnings;
-                showCashReward(winnings, jackpot);
+                showCashReward(winnings, jackpot, true);
                 celebrateSlotWin(results, match[0], jackpot);
             }
             databaseState.cashProfiles = cashProfiles;
@@ -2353,14 +2340,14 @@
             if (bonus1024) {
                 profile.balance += bonus1024;
                 setMoneyIndicator(profile.balance);
-                showCashReward(bonus1024);
+                showCashReward(bonus1024, false, true);
             }
             const newlyWon = GAME_2048_PRIZES.filter(tier => game.score >= tier.score && !game.claimed.includes(tier.score));
             if (newlyWon.length) {
                 const prize = newlyWon.reduce((sum, tier) => sum + tier.prize, 0);
                 newlyWon.forEach(tier => game.claimed.push(tier.score));
                 game.totalPrizes += prize; profile.balance += prize;
-                setMoneyIndicator(profile.balance); showCashReward(prize);
+                setMoneyIndicator(profile.balance); showCashReward(prize, false, true);
             }
             databaseState.cashProfiles = cashProfiles; queueLocalSave(); render2048();
             return true;
@@ -2376,7 +2363,6 @@
             document.getElementById('dailySummaryEnabled').checked = settings.dailySummary;
             document.getElementById('summaryTime').value = settings.summaryTime;
             document.getElementById('milestonesEnabled').checked = settings.milestones;
-            document.getElementById('localRemindersEnabled').checked = settings.reminders;
             document.getElementById('exactAlarmButton').hidden = !window.VikiNative;
             renderNotificationHistory();
         }
@@ -2389,7 +2375,6 @@
                     dailySummary: document.getElementById('dailySummaryEnabled').checked,
                     summaryTime: document.getElementById('summaryTime').value || '09:00',
                     milestones: document.getElementById('milestonesEnabled').checked,
-                    reminders: document.getElementById('localRemindersEnabled').checked
                 };
                 browserNotificationEvents = [];
                 if (!databaseState.notificationSettings.enabled) databaseState.notificationSnoozes = [];
@@ -2561,6 +2546,7 @@
             try {
                 const saved = await VikiStorage.load();
                 if (saved) databaseState = saved;
+                localStorage.removeItem(REMINDER_EMAIL_SETTINGS_KEY);
                 if (localStorage.getItem(NO_LLM_KEY) === null) localStorage.setItem(NO_LLM_KEY, 'true');
                 storageReady = true;
                 if (!saved) await VikiStorage.save(databaseState);
@@ -2590,7 +2576,6 @@
             document.getElementById('fallbackLocation').value = localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge';
             document.getElementById('matchingPriority').value = localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first';
             loadEmailSettings();
-            loadReminderEmailSettings();
             loadWakeWordSettings();
             loadDailySettings();
             document.getElementById('customQuickCommand').value = localStorage.getItem(CUSTOM_QUICK_COMMAND_KEY) || '';
@@ -2607,15 +2592,15 @@
             renderBootMessages();
             initStorageMode();
             VikiMobile.init();
+            VikiTerminal.init();
             VikiHelp.init();
             await VikiData.init({getState:()=>databaseState,getBackupPayload,exportData});
             await VikiInbox.init({ getState: () => databaseState, save: () => persistLocalState() });
-            checkDueReminders();
+            if(databaseState.reminders?.length){databaseState.reminders=[];await persistLocalState();}
             if (pendingPermissionChoice) await applyPermissionChoice(pendingPermissionChoice);
             setInterval(() => VikiHelp.maybeShowDaily(), 60000);
             setInterval(updateDeviceDateTime, 1000);
             setInterval(refreshDegradationState, 60 * 1000);
-            setInterval(checkDueReminders, 60 * 1000);
             setInterval(syncReminderClock, 15 * 60 * 1000);
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) { refreshDegradationState(); scheduleWakeWordListening(); VikiHelp.maybeShowDaily(); void VikiInbox.refresh(); }
@@ -2799,154 +2784,8 @@
             }
         }
 
-        function getReminderEmailSettings() {
-            try {
-                return { enabled: false, abelEmail: '', annaEmail: '', serviceId: '', templateId: '', publicKey: '', ...JSON.parse(localStorage.getItem(REMINDER_EMAIL_SETTINGS_KEY) || '{}') };
-            } catch (error) {
-                return { enabled: false, abelEmail: '', annaEmail: '', serviceId: '', templateId: '', publicKey: '' };
-            }
-        }
-
-        function loadReminderEmailSettings() {
-            const settings = getReminderEmailSettings();
-            document.getElementById('reminderEmailsEnabled').checked = settings.enabled;
-            document.getElementById('abelReminderEmail').value = settings.abelEmail;
-            document.getElementById('annaReminderEmail').value = settings.annaEmail;
-            document.getElementById('reminderEmailJsServiceId').value = settings.serviceId;
-            document.getElementById('reminderEmailJsTemplateId').value = settings.templateId;
-            document.getElementById('reminderEmailJsPublicKey').value = settings.publicKey;
-        }
-
-        function isValidEmail(value) {
-            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
-        }
-
-        function saveReminderEmailSettings() {
-            const settings = {
-                enabled: document.getElementById('reminderEmailsEnabled').checked,
-                abelEmail: document.getElementById('abelReminderEmail').value.trim(),
-                annaEmail: document.getElementById('annaReminderEmail').value.trim(),
-                serviceId: document.getElementById('reminderEmailJsServiceId').value.trim(),
-                templateId: document.getElementById('reminderEmailJsTemplateId').value.trim(),
-                publicKey: document.getElementById('reminderEmailJsPublicKey').value.trim()
-            };
-            if (settings.abelEmail && !isValidEmail(settings.abelEmail)) { addMessage("Abel's reminder email is invalid.", 'error'); return; }
-            if (settings.annaEmail && !isValidEmail(settings.annaEmail)) { addMessage("Anna's reminder email is invalid.", 'error'); return; }
-            if (settings.enabled && (!settings.serviceId || !settings.templateId || !settings.publicKey)) {
-                addMessage('Reminder emails require an EmailJS service ID, reminder template ID, and public key.', 'error');
-                return;
-            }
-            localStorage.setItem(REMINDER_EMAIL_SETTINGS_KEY, JSON.stringify(settings));
-            addMessage('Reminder email routing saved in this browser.', 'system');
-            checkDueReminders();
-        }
-
-        function getReminders() {
-            return Array.isArray(databaseState.reminders) ? databaseState.reminders : [];
-        }
-
-        async function sendReminderEmail(reminder, settings, reminderNumber, scheduledAt) {
-            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    service_id: settings.serviceId,
-                    template_id: settings.templateId,
-                    user_id: settings.publicKey,
-                    template_params: {
-                        to_email: reminder.recipients.join(', '),
-                        reminder_subject: reminder.subject,
-                        reminder_body: reminder.body || '',
-                        reminder_datetime: formatReminderDateTime(scheduledAt),
-                        reminder_number: String(reminderNumber),
-                        reminder_1_datetime: formatReminderDateTime(reminder.reminder_datetime),
-                        reminder_2_datetime: reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'None'
-                    }
-                })
-            });
-            if (!response.ok) throw new Error(`EmailJS rejected reminder "${reminder.subject}" (${response.status}).`);
-        }
-
-        async function checkDueReminders() {
-            const settings = getReminderEmailSettings();
-            if (!settings.enabled || !settings.serviceId || !settings.templateId || !settings.publicKey) return;
-            const now = getReminderNow();
-            const pending = getReminders().filter(reminder => reminder.status === 'pending');
-            for (const reminder of pending) {
-                if (!reminder.recipients?.length) continue;
-                let changed = false;
-                const deliveries = [
-                    { number: 1, at: reminder.reminder_datetime, sentKey: 'first_sent_at' },
-                    { number: 2, at: reminder.second_reminder_datetime, sentKey: 'second_sent_at' }
-                ];
-                for (const delivery of deliveries) {
-                    if (!delivery.at || reminder[delivery.sentKey] || Number.isNaN(Date.parse(delivery.at)) || new Date(delivery.at) > now) continue;
-                    try {
-                        await sendReminderEmail(reminder, settings, delivery.number, delivery.at);
-                        reminder[delivery.sentKey] = getReminderNow().toISOString();
-                        reminder.sent_at = reminder[delivery.sentKey];
-                        reminder.last_error = null;
-                        changed = true;
-                        await archiveEvent({ id: `email:reminder:${reminder.id}:${delivery.number}:${delivery.at}`, kind: 'email', title: reminder.subject, body: reminder.body || 'Scheduled reminder', recipients: [...reminder.recipients], at: Date.now(), status: 'sent' });
-                        addMessage(`REMINDER ${delivery.number} SENT: ${reminder.subject} → ${reminder.recipients.join(', ')}`, 'system');
-                    } catch (error) {
-                    const lastReported = reminder.last_error_at ? new Date(reminder.last_error_at) : null;
-                    reminder.last_error = error.message;
-                    if (!lastReported || now - lastReported >= 60 * 60 * 1000) {
-                        reminder.last_error_at = now.toISOString();
-                        queueLocalSave();
-                        void archiveEvent({ id: `email-error:${reminder.id}:${delivery.number}:${now.getTime()}`, kind: 'email', title: reminder.subject, body: error.message, at: now.getTime(), status: 'failed' });
-                        addMessage(`Reminder delivery failed: ${error.message}`, 'error');
-                    }
-                    }
-                }
-                if (reminder.first_sent_at && (!reminder.second_reminder_datetime || reminder.second_sent_at)) {
-                    if (normalizeReminderRepeat(reminder.repeat) === 'none') reminder.status = 'sent';
-                    else advanceRepeatingReminder(reminder, now);
-                    changed = true;
-                }
-                if (changed) queueLocalSave();
-            }
-        }
-
-        function normalizeReminderRepeat(value) {
-            const repeat = String(value || 'none').toLowerCase();
-            return ['daily', 'weekly', 'monthly'].includes(repeat) ? repeat : 'none';
-        }
-
-        function addReminderInterval(value, repeat) {
-            const date = new Date(value);
-            if (repeat === 'daily') date.setUTCDate(date.getUTCDate() + 1);
-            if (repeat === 'weekly') date.setUTCDate(date.getUTCDate() + 7);
-            if (repeat === 'monthly') {
-                // Tucson uses UTC-07 year round; month/day arithmetic must use that calendar.
-                const local = new Date(date.getTime() - TUCSON_UTC_OFFSET_HOURS * 60 * 60 * 1000);
-                const day = local.getUTCDate();
-                local.setUTCDate(1);
-                local.setUTCMonth(local.getUTCMonth() + 1);
-                const lastDay = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 0)).getUTCDate();
-                local.setUTCDate(Math.min(day, lastDay));
-                return new Date(local.getTime() + TUCSON_UTC_OFFSET_HOURS * 60 * 60 * 1000);
-            }
-            return date;
-        }
-
-        function advanceRepeatingReminder(reminder, now = getReminderNow()) {
-            const repeat = normalizeReminderRepeat(reminder.repeat);
-            if (repeat === 'none') return;
-            let first = new Date(reminder.reminder_datetime);
-            let second = reminder.second_reminder_datetime ? new Date(reminder.second_reminder_datetime) : null;
-            do {
-                first = addReminderInterval(first, repeat);
-                if (second) second = addReminderInterval(second, repeat);
-            } while ((second || first) <= now);
-            reminder.reminder_datetime = first.toISOString();
-            reminder.second_reminder_datetime = second ? second.toISOString() : null;
-            reminder.first_sent_at = null;
-            reminder.second_sent_at = null;
-            reminder.sent_at = null;
-            reminder.status = 'pending';
-        }
+        function isValidEmail(value){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value||''));}
+        function getReminders() { return []; }
 
         function isPlainObject(value) {
             return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -3038,7 +2877,7 @@
             try {
                 const payload = JSON.parse(await file.text());
                 validateImportPayload(payload);
-                if (!window.confirm('Replace local inventory, presets, favorites, reminders, and cash profiles with this backup?')) return;
+                if (!window.confirm('Replace local inventory, presets, favorites, and cash profiles with this backup?')) return;
                 await applyImportedData(payload);
             } catch (error) {
                 addMessage(`IMPORT_DATA rejected: ${error.message}`, 'error');
@@ -3054,7 +2893,7 @@
             const messages = VIKI_PERSONALITY.bootMessages.map(message => {
                 const messageEl = document.createElement('div');
                 messageEl.className = 'message assistant';
-                messageEl.textContent = message;
+                VikiTerminal.render(messageEl,message,'assistant');
                 return messageEl;
             });
 
@@ -3234,7 +3073,7 @@
             const logo = document.getElementById('vikiLogo');
             const aiStatus = document.getElementById('aiStatus');
             const aiStatusText = document.getElementById('aiStatusText');
-            if (logo) logo.textContent = active ? 'VIKI [POWERED]' : 'VIKI';
+            if (logo && !logo.dataset.celebrating) logo.textContent = active ? 'VIKI [POWERED]' : 'VIKI';
             if (aiStatus) aiStatus.classList.toggle('active', !isLLMDisabled() && (active || isUsingLocalAI()));
             if (aiStatusText) aiStatusText.textContent = isLLMDisabled() ? 'NO_LLM' : (active ? 'NEURAL_LINK' : (isUsingLocalAI() ? 'LOCAL' : 'VENICE_API'));
         }
@@ -3367,9 +3206,10 @@
 
         function checkExpiringItems() {
             const expiring = getExpiringItems().filter(i => i.daysLeft <= 3 && i.daysLeft > 0);
-            const alert = document.getElementById('expiringAlert');
-            alert.textContent = `CRITICAL: ${expiring.length} nutritional asset(s) approaching degradation threshold`;
-            alert.classList.toggle('show', expiring.length > 0);
+            const badge = document.getElementById('expiringCount');
+            badge.textContent = `⚠︎ ${expiring.length} ${expiring.length === 1 ? 'item' : 'items'}`;
+            badge.setAttribute('aria-label',`${expiring.length} items approaching their shelf-life limit`);
+            badge.hidden = expiring.length === 0;
             checkDegradationEmailNotifications().catch(error => addMessage(`Email alert failed: ${error.message}`, 'error'));
         }
 
@@ -3695,9 +3535,10 @@
             registryView = view === 'reminders' ? 'reminders' : 'assets';
             if (registryEditMode) setRegistryEditMode(false);
             const reminders = registryView === 'reminders';
+            document.getElementById('notificationGamesButton').hidden=!reminders;
             const title = document.getElementById('registryTitleButton');
-            title.textContent = reminders ? 'REMINDER_REG' : 'ASSET_REGISTRY';
-            title.setAttribute('aria-label', reminders ? 'Switch to asset registry' : 'Switch to reminder registry');
+            title.textContent = reminders ? 'NOTIFICATIONS' : 'ASSET_REGISTRY';
+            title.setAttribute('aria-label', reminders ? 'Switch to asset registry' : 'Switch to notification history');
             document.getElementById('filterCollapseButton').hidden = reminders;
             document.getElementById('filterContent').hidden = reminders || document.getElementById('filterCollapseButton').getAttribute('aria-expanded') !== 'true';
             document.getElementById('reminderFilterContent').hidden = !reminders;
@@ -3709,129 +3550,7 @@
             if (reminders) void VikiInbox.refresh();
         }
 
-        function reminderMatchesRecipientFilter(reminder, filter) {
-            if (filter === 'all') return true;
-            const settings = getReminderEmailSettings();
-            const target = filter === 'abel' ? settings.abelEmail : settings.annaEmail;
-            return Boolean(target) && reminder.recipients.some(email => email.toLowerCase() === target.toLowerCase());
-        }
-
-        function renderReminderRegistry() {
-            window.VikiInbox?.setVisible(true);
-            const list = document.getElementById('inventoryList');
-            const filter = document.getElementById('reminderRecipientFilter').value;
-            const reminders = getReminders().filter(reminder => reminderMatchesRecipientFilter(reminder, filter));
-            document.getElementById('itemCount').textContent = `${reminders.length} reminder(s)`;
-            list.replaceChildren();
-            if (!reminders.length) {
-                const empty = document.createElement('div');
-                empty.className = 'empty-state';
-                empty.innerHTML = '<div class="empty-state-icon">◇</div><div>No reminders detected</div><div style="font-size:0.75rem;margin-top:8px">Use “Add Reminder” to schedule one</div>';
-                list.appendChild(empty);
-                return;
-            }
-            reminders.sort((a, b) => new Date(a.reminder_datetime) - new Date(b.reminder_datetime)).forEach(reminder => {
-                const card = document.createElement('article');
-                card.className = 'inventory-item reminder-card';
-                card.dataset.reminderId = reminder.id;
-                const field = (labelText, name, type, value) => {
-                    const label = document.createElement('label');
-                    label.className = 'registry-edit-field';
-                    label.textContent = labelText;
-                    const input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
-                    input.className = 'registry-field';
-                    input.dataset.field = name;
-                    if (type !== 'textarea') input.type = type;
-                    input.value = value;
-                    label.appendChild(input);
-                    return label;
-                };
-                const repeatField = document.createElement('label');
-                repeatField.className = 'registry-edit-field';
-                repeatField.textContent = 'REPEAT';
-                const repeatSelect = document.createElement('select');
-                repeatSelect.className = 'registry-field';
-                repeatSelect.dataset.field = 'repeat';
-                [['none', 'ONCE / NONE'], ['daily', 'DAILY'], ['weekly', 'WEEKLY'], ['monthly', 'MONTHLY']].forEach(([value, label]) => {
-                    const option = document.createElement('option');
-                    option.value = value; option.textContent = label;
-                    repeatSelect.appendChild(option);
-                });
-                repeatSelect.value = normalizeReminderRepeat(reminder.repeat);
-                repeatField.appendChild(repeatSelect);
-                const grid = document.createElement('div');
-                grid.className = 'reminder-card-grid';
-                grid.append(
-                    field('SUBJECT', 'subject', 'text', reminder.subject),
-                    field('EMAIL(S) — OPTIONAL', 'recipients', 'text', reminder.recipients.join(', ')),
-                    field('REMINDER 1', 'reminder_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.reminder_datetime)),
-                    field('REMINDER 2 (OPTIONAL)', 'second_reminder_datetime', 'datetime-local', reminder.second_reminder_datetime ? formatTucsonDateTimeLocal(reminder.second_reminder_datetime) : ''),
-                    repeatField
-                );
-                const status = document.createElement('div');
-                status.className = 'reminder-status';
-                status.textContent = `STATUS: ${String(reminder.status || 'pending').toUpperCase()}`;
-                const actions = document.createElement('div');
-                actions.className = 'reminder-card-actions';
-                const save = document.createElement('button');
-                save.className = 'config-button'; save.type = 'button'; save.textContent = 'SAVE_REMINDER';
-                save.addEventListener('click', () => saveReminderCard(card));
-                const remove = document.createElement('button');
-                remove.className = 'config-button registry-remove'; remove.type = 'button'; remove.textContent = 'DELETE';
-                remove.addEventListener('click', () => deleteReminder(reminder.id));
-                actions.append(save, remove);
-                card.append(grid, field('NOTES / EMAIL BODY', 'body', 'textarea', reminder.body || ''), status, actions);
-                list.appendChild(card);
-            });
-        }
-
-        function parseRecipientField(value) {
-            return [...new Set(value.split(/[;,\n]+/).map(email => email.trim()).filter(Boolean))];
-        }
-
-        function saveReminderCard(card) {
-            const reminder = getReminders().find(entry => String(entry.id) === card.dataset.reminderId);
-            if (!reminder) return;
-            const value = name => card.querySelector(`[data-field="${name}"]`).value.trim();
-            const recipients = parseRecipientField(value('recipients'));
-            const sendAt = parseReminderDateValue(value('reminder_datetime'));
-            const secondAt = value('second_reminder_datetime') ? parseReminderDateValue(value('second_reminder_datetime')) : null;
-            if (!value('subject') || recipients.some(email => !isValidEmail(email)) || !sendAt || Number.isNaN(sendAt.getTime()) || (secondAt && Number.isNaN(secondAt.getTime()))) {
-                addMessage('Reminder save rejected. A subject and Reminder 1 are required. Email recipients are optional.', 'error');
-                return;
-            }
-            if (secondAt && secondAt <= sendAt) {
-                addMessage('Reminder 2 must be later than Reminder 1, or leave Reminder 2 empty.', 'error');
-                return;
-            }
-            const sendChanged = reminder.reminder_datetime !== sendAt.toISOString();
-            const secondValue = secondAt ? secondAt.toISOString() : null;
-            const secondChanged = (reminder.second_reminder_datetime || null) !== secondValue;
-            const repeat = normalizeReminderRepeat(value('repeat'));
-            const repeatChanged = normalizeReminderRepeat(reminder.repeat) !== repeat;
-            Object.assign(reminder, { subject: value('subject'), body: value('body'), recipients, reminder_datetime: sendAt.toISOString(), second_reminder_datetime: secondValue, repeat });
-            if (sendChanged && sendAt > getReminderNow()) { reminder.status = 'pending'; reminder.first_sent_at = null; reminder.sent_at = null; }
-            if (secondChanged) { reminder.second_sent_at = null; if (secondAt) reminder.status = 'pending'; }
-            if (repeatChanged && repeat !== 'none') {
-                reminder.status = 'pending';
-                reminder.first_sent_at = null;
-                reminder.second_sent_at = null;
-                reminder.sent_at = null;
-            }
-            queueLocalSave();
-            renderReminderRegistry();
-            addMessage(`Reminder updated: ${reminder.subject}.`, 'system');
-            checkDueReminders();
-        }
-
-        function deleteReminder(id) {
-            const reminder = getReminders().find(entry => String(entry.id) === String(id));
-            if (!reminder || !window.confirm(`Delete reminder “${reminder.subject}”?`)) return;
-            databaseState.reminders = getReminders().filter(entry => String(entry.id) !== String(id));
-            queueLocalSave();
-            renderReminderRegistry();
-            addMessage(`Reminder deleted: ${reminder.subject}.`, 'system');
-        }
+        function renderReminderRegistry() { document.getElementById('inventoryList').replaceChildren(); window.VikiInbox?.setVisible(true); window.VikiInbox?.setSection('history'); }
 
         function getDegradationVisual(item) {
             const percent = Math.max(0, Math.min(100, Math.round((Number(item.daysLeft) / Number(item.shelfLife)) * 100)));
@@ -3998,6 +3717,7 @@
             msg.className = `message ${renderedType}`;
 
             const safeText = String(text).replace(/\^/g, '');
+            if(window.VikiTerminal){VikiTerminal.render(msg,safeText,renderedType);chatArea.appendChild(msg);chatArea.scrollTop=chatArea.scrollHeight;if(renderedType==='assistant'||renderedType==='powered')speakMessage(safeText);return;}
             safeText.split('\n').forEach((line, idx) => {
                 if (idx > 0) msg.appendChild(document.createElement('br'));
                 msg.appendChild(document.createTextNode(line));
@@ -4697,260 +4417,6 @@
             return { hour, minute, second };
         }
 
-        function getTucsonDateParts(date = getReminderNow()) {
-            const parts = new Intl.DateTimeFormat('en-US', {
-                timeZone: REMINDER_TIME_ZONE, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
-                hour: 'numeric', minute: 'numeric', second: 'numeric'
-            }).formatToParts(date);
-            const value = type => Number(parts.find(part => part.type === type)?.value);
-            return { year: value('year'), month: value('month'), day: value('day'), hour: value('hour'), minute: value('minute'), second: value('second') };
-        }
-
-        function formatTucsonDateTimeLocal(value) {
-            const part = getTucsonDateParts(new Date(value));
-            const pad = number => String(number).padStart(2, '0');
-            return `${part.year}-${pad(part.month)}-${pad(part.day)}T${pad(part.hour)}:${pad(part.minute)}`;
-        }
-
-        function formatReminderDateTime(value) {
-            return new Intl.DateTimeFormat(undefined, {
-                timeZone: REMINDER_TIME_ZONE, year: 'numeric', month: 'numeric', day: 'numeric',
-                hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
-            }).format(new Date(value));
-        }
-
-        function createTucsonDate(year, month, day, timeText) {
-            const time = parseLocalTimeParts(timeText);
-            if (!time) return null;
-            const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), time.hour + TUCSON_UTC_OFFSET_HOURS, time.minute, time.second, 0));
-            const verified = getTucsonDateParts(date);
-            if (verified.year !== Number(year) || verified.month !== Number(month) || verified.day !== Number(day)) return null;
-            return date;
-        }
-
-        function parseBrowserLocalDateTime(input) {
-            const explicitZone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(input);
-            if (explicitZone) {
-                const instant = new Date(input);
-                return Number.isNaN(instant.getTime()) ? null : instant;
-            }
-            let match = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[t\s]+(.+))?$/i);
-            if (match) return createTucsonDate(match[1], match[2], match[3], match[4]);
-            match = input.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s+(.+))?$/i);
-            if (match) {
-                const year = Number(match[3]) < 100 ? 2000 + Number(match[3]) : Number(match[3]);
-                return createTucsonDate(year, match[1], match[2], match[4]);
-            }
-            const months = { january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4, may: 5, june: 6, jun: 6, july: 7, jul: 7, august: 8, aug: 8, september: 9, sep: 9, sept: 9, october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12 };
-            match = input.match(/^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?[,]?\s+(\d{4})(?:\s+(.+))?$/i);
-            if (match && months[match[1].toLowerCase()]) return createTucsonDate(match[3], months[match[1].toLowerCase()], match[2], match[4]);
-            match = input.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)[,]?\s+(\d{4})(?:\s+(.+))?$/i);
-            if (match && months[match[2].toLowerCase()]) return createTucsonDate(match[3], months[match[2].toLowerCase()], match[1], match[4]);
-            const parsed = new Date(input);
-            return Number.isNaN(parsed.getTime()) ? null : parsed;
-        }
-
-        function parseReminderDateValue(value) {
-            const input = String(value || '').trim().replace(/^(?:reminder|send|event|deadline)(?:\s+(?:date|time|datetime|date\/time))?\s*[:=-]?\s*/i, '').replace(/(?:\s+at\s+|\s*@\s*)/ig, ' ');
-            if (!input) return null;
-            const now = getReminderNow();
-            const today = getTucsonDateParts(now);
-            const timeOnly = parseLocalTimeParts(input);
-            if (timeOnly) return createTucsonDate(today.year, today.month, today.day, input);
-            const numberWords = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, half: 0.5 };
-            const relative = input.match(/^in\s+(\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|half)(?:\s+of\s+an?)?\s*(minute|hour|day|week)s?$/i);
-            if (relative) {
-                const amount = Number.isFinite(Number(relative[1])) ? Number(relative[1]) : numberWords[relative[1].toLowerCase()];
-                const multipliers = { minute: 60 * 1000, hour: 60 * 60 * 1000, day: MS_PER_DAY, week: 7 * MS_PER_DAY };
-                return new Date(now.getTime() + amount * multipliers[relative[2].toLowerCase()]);
-            }
-            const weekday = input.match(/^(?:(next)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)(?:\s+(?:at\s+)?)?(.+)?$/i);
-            if (weekday) {
-                const weekdayIndex = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].indexOf(weekday[2].toLowerCase());
-                const calendarDate = new Date(Date.UTC(today.year, today.month - 1, today.day));
-                let daysAhead = (weekdayIndex - calendarDate.getUTCDay() + 7) % 7;
-                if (daysAhead === 0 || weekday[1]) daysAhead += daysAhead === 0 ? 7 : 0;
-                calendarDate.setUTCDate(calendarDate.getUTCDate() + daysAhead);
-                const time = parseLocalTimeParts((weekday[3] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM'));
-                if (!time) return null;
-                return createTucsonDate(calendarDate.getUTCFullYear(), calendarDate.getUTCMonth() + 1, calendarDate.getUTCDate(), `${time.hour}:${String(time.minute).padStart(2, '0')}:${String(time.second).padStart(2, '0')}`);
-            }
-            const relativeDay = input.match(/^(today|tomorrow)(?:\s+(?:at\s+)?)?(.+)?$/i);
-            if (relativeDay) {
-                const calendarDate = new Date(Date.UTC(today.year, today.month - 1, today.day));
-                if (relativeDay[1].toLowerCase() === 'tomorrow') calendarDate.setUTCDate(calendarDate.getUTCDate() + 1);
-                const time = parseLocalTimeParts((relativeDay[2] || '9:00 AM').trim().replace(/^noon$/i, '12:00 PM').replace(/^midnight$/i, '12:00 AM'));
-                if (!time) return null;
-                return createTucsonDate(calendarDate.getUTCFullYear(), calendarDate.getUTCMonth() + 1, calendarDate.getUTCDate(), `${time.hour}:${String(time.minute).padStart(2, '0')}:${String(time.second).padStart(2, '0')}`);
-            }
-            return parseBrowserLocalDateTime(input);
-        }
-
-        function resolveReminderRecipients(input) {
-            const settings = getReminderEmailSettings();
-            const lower = input.toLowerCase();
-            const recipients = [];
-            const add = email => { if (email && isValidEmail(email) && !recipients.includes(email)) recipients.push(email); };
-            if (/\b(?:both|abel\s+(?:and|&)\s+anna|anna\s+(?:and|&)\s+abel)\b/i.test(lower)) { add(settings.abelEmail); add(settings.annaEmail); }
-            else {
-                if (/\babel\b/i.test(lower)) add(settings.abelEmail);
-                if (/\banna\b/i.test(lower)) add(settings.annaEmail);
-            }
-            (input.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).forEach(add);
-            const requestedNamed = /\babel\b/i.test(lower) || /\banna\b/i.test(lower) || /\bboth\b/i.test(lower);
-            if (requestedNamed && recipients.length === 0) return { error: "The requested Abel/Anna email is not configured under Reminder Emails in Settings." };
-            if (/\bboth\b/i.test(lower) && recipients.length < 2) return { error: "Both Abel's and Anna's email addresses must be configured under Reminder Emails." };
-            if (recipients.length === 0) return { error: 'Reply ABEL, ANNA, BOTH, or enter one or more complete custom email addresses.' };
-            return { recipients };
-        }
-
-        function setReminderReplyHandler(prompt, handler) {
-            pendingQuestions = { questions: [], cancelMessage: 'Reminder creation cancelled. Nothing was scheduled.', handleReply: handler };
-            addMessage(prompt, 'assistant');
-        }
-
-        function scheduleReminderDraft(draft) {
-            requireLocalStorage();
-            const reminder = {
-                id: typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `reminder-${Date.now()}`,
-                subject: draft.subject,
-                body: draft.body,
-                reminder_datetime: draft.reminder_datetime,
-                second_reminder_datetime: draft.second_reminder_datetime || null,
-                repeat: normalizeReminderRepeat(draft.repeat),
-                recipients: draft.recipients,
-                status: 'pending',
-                created_at: getDeviceNow().toISOString(),
-                sent_at: null,
-                first_sent_at: null,
-                second_sent_at: null
-            };
-            databaseState.reminders = [...getReminders(), reminder];
-            queueLocalSave();
-            void earnCashForRegistryAddition();
-            addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'} Repeat: ${reminder.repeat === 'none' ? 'ONCE' : reminder.repeat.toUpperCase()}.`, 'assistant');
-        }
-
-        function confirmReminderDraft(draft) {
-            const summary = [
-                `Subject: ${draft.subject}`,
-                `Notes: ${draft.body || 'None'}`,
-                `Reminder 1: ${formatReminderDateTime(draft.reminder_datetime)}`,
-                `Reminder 2: ${draft.second_reminder_datetime ? formatReminderDateTime(draft.second_reminder_datetime) : 'None'}`,
-                `Repeat: ${normalizeReminderRepeat(draft.repeat) === 'none' ? 'Once / None' : normalizeReminderRepeat(draft.repeat)}`,
-                `Recipients: ${draft.recipients.join(', ') || 'This device only'}`
-            ].join('\n');
-            pendingQuestions = {
-                questions: [],
-                cancelMessage: 'Reminder creation cancelled. Nothing was scheduled.',
-                handleReply(reply) {
-                    if (/^(?:yes|confirm|confirmed|correct|proceed)$/i.test(reply.trim())) {
-                        pendingQuestions = null;
-                        scheduleReminderDraft(draft);
-                        return;
-                    }
-                    const timeChange = reply.match(/^(?:set|change|update)(?:\s+(?:the\s+)?(?:reminder|send(?:\s+time)?|it))?\s+(?:to\s+)?(.+)$/i);
-                    if (timeChange) {
-                        const revisedReminderDate = parseReminderDateValue(timeChange[1]);
-                        const secondDate = draft.second_reminder_datetime ? new Date(draft.second_reminder_datetime) : null;
-                        const error = !revisedReminderDate || revisedReminderDate <= getReminderNow()
-                            ? 'Reminder 1 must be in the future.'
-                            : secondDate && secondDate <= revisedReminderDate ? 'Reminder 2 must be later than Reminder 1.' : '';
-                        if (error) addMessage(error, 'error');
-                        else {
-                            draft.reminder_datetime = revisedReminderDate.toISOString();
-                            addMessage(`Reminder send time updated using Tucson time: ${formatReminderDateTime(revisedReminderDate)}.`, 'system');
-                        }
-                        confirmReminderDraft(draft);
-                        return;
-                    }
-                    addMessage(`${summary}\n\nReply CONFIRM, CANCEL, or “set it to 5:30 PM”.`, 'assistant');
-                }
-            };
-            addMessage(`${summary}\n\nIs this correct? Reply CONFIRM, CANCEL, or “set it to 5:30 PM”.`, 'assistant');
-        }
-
-        function askReminderRecipient(draft) {
-            setReminderReplyHandler('Reply LOCAL for an on-device reminder, or enter optional email recipients: Anna, Abel, both, or custom email addresses.', reply => {
-                if (/^(local|none|skip|device)$/i.test(reply.trim())) { draft.recipients = []; askReminderRepeat(draft); return; }
-                const result = resolveReminderRecipients(reply);
-                if (result.error) { addMessage(result.error, 'error'); askReminderRecipient(draft); return; }
-                draft.recipients = result.recipients;
-                askReminderRepeat(draft);
-            });
-        }
-
-        function askReminderRepeat(draft) {
-            setReminderReplyHandler('Should this reminder repeat? Reply ONCE or NONE, DAILY, WEEKLY, or MONTHLY.', reply => {
-                const normalized = reply.trim().toLowerCase().replace(/\s+/g, ' ');
-                const aliases = { once: 'none', none: 'none', 'once/none': 'none', daily: 'daily', weekly: 'weekly', monthly: 'monthly' };
-                if (!aliases[normalized]) {
-                    addMessage('Choose ONCE or NONE, DAILY, WEEKLY, or MONTHLY.', 'error');
-                    askReminderRepeat(draft);
-                    return;
-                }
-                draft.repeat = aliases[normalized];
-                confirmReminderDraft(draft);
-            });
-        }
-
-        function askSecondReminderDate(draft) {
-            setReminderReplyHandler('When should Reminder 2 send? Enter a Tucson date/time, or reply NONE to use only Reminder 1.', reply => {
-                if (/^(?:none|no|skip|no second reminder)$/i.test(reply.trim())) {
-                    draft.second_reminder_datetime = null;
-                    askReminderRecipient(draft);
-                    return;
-                }
-                const secondDate = parseReminderDateValue(reply);
-                const firstDate = new Date(draft.reminder_datetime);
-                if (!secondDate || secondDate <= getReminderNow()) {
-                    addMessage('Reminder 2 must be a valid future date/time in Tucson, or reply NONE.', 'error');
-                    askSecondReminderDate(draft);
-                    return;
-                }
-                if (secondDate <= firstDate) {
-                    addMessage('Reminder 2 must be later than Reminder 1, or reply NONE.', 'error');
-                    askSecondReminderDate(draft);
-                    return;
-                }
-                draft.second_reminder_datetime = secondDate.toISOString();
-                askReminderRecipient(draft);
-            });
-        }
-
-        function askFirstReminderDate(draft) {
-            setReminderReplyHandler('When should Reminder 1 send? Enter one date and time in Tucson, Arizona.', reply => {
-                const firstDate = parseReminderDateValue(reply);
-                if (!firstDate || firstDate <= getReminderNow()) {
-                    addMessage('Reminder 1 must be a valid future date/time in Tucson, Arizona.', 'error');
-                    askFirstReminderDate(draft);
-                    return;
-                }
-                draft.reminder_datetime = firstDate.toISOString();
-                askSecondReminderDate(draft);
-            });
-        }
-
-        function startReminderConversation() {
-            const draft = { subject: '', body: '', reminder_datetime: '', second_reminder_datetime: null, recipients: [], repeat: 'none' };
-            setReminderReplyHandler('What is the subject or gist of the reminder?', reply => {
-                const subject = reply.trim();
-                if (!subject) { addMessage('A reminder subject is required.', 'error'); startReminderConversation(); return; }
-                draft.subject = subject;
-                setReminderReplyHandler('Besides the subject, is there any other information you would like to add to this reminder? Reply SKIP if no additional notes are required.', bodyReply => {
-                    draft.body = /^(?:skip|none|no|nothing|no notes?)$/i.test(bodyReply.trim()) ? '' : bodyReply.trim();
-                    askFirstReminderDate(draft);
-                });
-            });
-            return { type: 'pending' };
-        }
-
-        function formatReminderReport() {
-            const reminders = getReminders().filter(reminder => reminder.status === 'pending').sort((a, b) => new Date(a.reminder_datetime) - new Date(b.reminder_datetime));
-            if (reminders.length === 0) return 'No pending reminders are scheduled.';
-            return `PENDING REMINDERS:\n${reminders.map((reminder, index) => `${index + 1}. ${reminder.subject} — REMINDER 1 ${formatReminderDateTime(reminder.reminder_datetime)} — REMINDER 2 ${reminder.second_reminder_datetime ? formatReminderDateTime(reminder.second_reminder_datetime) : 'NONE'} — REPEAT ${normalizeReminderRepeat(reminder.repeat).toUpperCase()} — ${reminder.recipients.join(', ')}`).join('\n')}`;
-        }
-
         function weatherCodeDescription(code) {
             const descriptions = {
                 0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
@@ -5152,8 +4618,7 @@
                 return { message: `Operator, today is ${now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. Device time is ${now.toLocaleTimeString()}.` };
             }
 
-            if (/^(?:add|create|schedule|set)(?:\s+(?:a|new))?\s+reminder[.!?]*$/i.test(text.trim())) return startReminderConversation();
-            if (/^(?:show|list|view)?\s*(?:my\s+)?reminders[.!?]*$/i.test(text.trim())) return { message: formatReminderReport() };
+            if (/\bremind(?:er|ers)?\b/i.test(text)) return {message:'Personal reminder scheduling has been retired. Open Notifications to review inventory alerts and email activity.'};
             if (/^daily briefing[.!?]*$/i.test(text.trim())) return createDailyBriefing();
             const articleFollowUp = text.trim().match(/^(?:please\s+)?(?:read|expand(?:\s+on)?|summari[sz]e|explain|tell me (?:more )?about|give me (?:more|details) (?:about|on))\s+(?:the\s+)?(?:news\s+)?article\s*(?:number\s*)?(\d+)(?:\s+please)?[.!?]*$/i);
             if (articleFollowUp) return createPoweredArticleResponse(text, Number(articleFollowUp[1]));
@@ -5509,7 +4974,7 @@
             if (!Array.isArray(payload.actions)) payload.actions = [];
             payload.actions.forEach((action, index) => {
                 if (!action || typeof action !== 'object') throw new Error(`Action ${index + 1} malformed.`);
-                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view', 'update_settings', 'parse_reminder_dates'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
+                if (!['add_item', 'consume_item', 'modify_item', 'remove_item', 'clear_inventory', 'set_view', 'update_settings'].includes(action.type)) throw new Error(`Action ${index + 1} type rejected.`);
                 if (['add_item', 'consume_item', 'modify_item', 'remove_item'].includes(action.type) && !action.name) throw new Error(`Action ${index + 1} missing name.`);
             });
             return payload;
@@ -5748,6 +5213,7 @@
         const filterContent = document.getElementById('filterContent');
 
         function setSettingsOpen(isOpen) {
+            if(!isOpen)window.VikiMobile?.confirmAppearance(true);
             settingsPage.hidden = !isOpen;
             document.body.style.overflow = isOpen ? 'hidden' : '';
             if (isOpen) {
@@ -5774,6 +5240,7 @@
         document.getElementById('cashProfileSelect').addEventListener('change', previewCashProfile);
         document.getElementById('saveCashProfileButton').addEventListener('click', saveCashProfile);
         document.getElementById('saveSpeechSettingsButton').addEventListener('click', saveSpeechSettings);
+        document.getElementById('notificationGamesButton').addEventListener('click',openSlotMachine);
         document.getElementById('moneyIndicator').addEventListener('click', openSlotMachine);
         document.getElementById('openSlotMachineButton').addEventListener('click', openSlotMachine);
         document.getElementById('closeSlotMachineButton').addEventListener('click', closeSlotMachine);
@@ -5881,7 +5348,6 @@
         document.getElementById('registryTitleButton').addEventListener('click', () => setRegistryView(registryView === 'assets' ? 'reminders' : 'assets'));
         document.getElementById('saveRegistryButton').addEventListener('click', saveManualRegistry);
         document.getElementById('saveEmailSettingsButton').addEventListener('click', saveEmailSettings);
-        document.getElementById('saveReminderEmailSettingsButton').addEventListener('click', saveReminderEmailSettings);
         document.getElementById('saveWakeWordSettingsButton').addEventListener('click', saveWakeWordSettings);
         document.getElementById('saveDailySettingsButton').addEventListener('click', saveDailySettings);
         document.getElementById('customQuickCommandButton').addEventListener('click', runCustomQuickCommand);
