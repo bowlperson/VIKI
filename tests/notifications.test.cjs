@@ -20,10 +20,10 @@ test('short-lived stock avoids percentage warnings; zero quantity ignored', () =
  assert.equal(plan({inventory:[item(1,7)]},config,now).length,1);
  assert.deepEqual(plan({inventory:[{...item(110),quantity:0}]},config,now),[]);
 });
-test('two reminder deliveries retain recurrence and ignore email delivery status', () => {
+test('retired reminders never enter notification plans', () => {
  const reminder = {id:3,subject:'Check mail',reminder_datetime:new Date(now+DAY).toISOString(),second_reminder_datetime:new Date(now+2*DAY).toISOString(),repeat:'weekly',status:'sent'};
  const events=plan({reminders:[reminder]}, {enabled:true,dailySummary:false},now);
- assert.equal(events.length,2); assert.equal(events[0].repeat,'weekly');assert.notEqual(events[0].id,events[1].id);
+ assert.equal(events.length,0);
 });
 test('daily digest evaluates current inventory and skips empty inventory',()=>{
  assert.equal(digestBody({},now),'');

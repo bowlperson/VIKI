@@ -2,7 +2,17 @@
 
 VIKI (Virtual Inventory Keeper Intelligence) is a browser-based household inventory assistant for tracking nutritional assets, degradation timelines, locations, and quantities.
 
-## Theme refinements (0.3.0)
+## Beta 0.4.0
+
+The downloadable package is now `downloads/viki-beta.apk`, version **0.4.0-beta**, signed with the existing development certificate for in-place upgrades. Beta naming does not establish physical-device validation or a production signing process.
+
+CyberPunk Red uses red framing, cyan secondary accents and warm yellow text, inspired by the supplied UI reference. All preset themes are immutable. Changing an appearance control copies the selected preset into Custom, previews locally, and requires **Save & confirm appearance** or confirmation when leaving Settings. Declining the exit confirmation restores the saved appearance. Selecting a preset restores its intended defaults.
+
+Chat uses palette-aware terminal prompts, subtle CRT scanlines, a blinking block cursor, adjustable typing speed, and tap-to-skip enabled by default. Reduced motion displays responses immediately. Cash balance replaces the header tagline; four taps on VIKI trigger a palette-colored burst and display Anna + Abel for ten seconds. Controls are nonselectable, while chat text, editable fields and item details remain selectable.
+
+Personal scheduled reminders and scheduled reminder emails have been retired. The Notifications view contains only notification and email activity history. Existing reminder alarms are canceled natively; recorded historical email activity is preserved in the inbox before the old schedules are cleared. Automated inventory degradation emails remain supported. Old backup schemas retain an empty reminders array for compatibility and cannot schedule reminders.
+
+## Earlier theme refinements (0.3.0)
 
 Location filters and tags share theme-specific Fridge, Freezer, and Cupboard colors. Appearance lets you override each location, the main accent, and a separate secondary accent per theme; reset restores that theme's defaults. Mono changes accent effects to the main color while retaining location meaning. General text scales from 65–160%; VIKI chat has its own independent 65–180% slider. Cash and game results stay in their own interface and no longer post to VIKI chat.
 
@@ -71,13 +81,13 @@ cd android
 
 In the prepared cloud workspace, `npm run android:build` (or `bash scripts/android-build.sh`) selects the installed JDK/SDK and runs native tests, APK assembly, and lint. The helper also accepts individual Gradle task names.
 
-The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk` relative to the repository root. The Android build copies the root web assets, so browser and APK development use the same application source. Rebuild the APK to include web changes. A debug APK is for development; a distributable release requires your own signing key, retained securely for future updates.
+The build output is written to `android/app/build/outputs/apk/debug/app-debug.apk` relative to the repository root. The Android build copies the root web assets, so browser and APK development use the same application source. Rebuild the APK to include web changes. The downloadable beta uses the existing signing certificate; retain signing keys securely for future updates.
 
 The initial APK does not request microphone access and does not provide browser voice recognition or background wake-word listening. Optional hosted integrations use HTTPS; cleartext local Ollama access is not supported by this APK.
 
 ### Downloading the test APK
 
-The deployed website serves the development APK at `downloads/`, with its SHA-256 checksum and installation notes. The same files are committed in [downloads](downloads/) so the testing build is accessible from GitHub before deployment. This is a debug-signed build, not a production release.
+The deployed website serves the beta APK at `downloads/`, with its SHA-256 checksum and installation notes. The same files are committed in [downloads](downloads/) so the testing build is accessible from GitHub before deployment. This is a beta build using the existing development signing certificate.
 
 Pages publishes from `main`; merge this branch and let the existing Pages workflow finish to publish the web app and APK download together. `bash scripts/stage-site.sh` prepares the same public files locally, verifying the APK checksum and excluding source tooling and build caches. When updating the downloadable APK, replace `downloads/viki-debug.apk` and its checksum together.
 
@@ -218,34 +228,3 @@ food name | tag one, tag two | category | fridge | 7
 ```
 
 The matching priority can prefer exact food names or tags. Preset names, tags, categories, locations, shelf lives, inventory, and favorite rules save in the local database. They are included in explicit optional Supabase copy transfers. Device-only UI preferences and service credentials remain in browser storage.
-
-## Reminders
-
-Enter `Add Reminder` to create a local reminder without an LLM. Reply **LOCAL** at the recipient question to avoid email entirely, or enter optional email recipients. Enable scheduled reminders in On-device Notifications for local delivery. VIKI collects the subject and optional notes verbatim, then asks for **Reminder 1** and **Reminder 2 in separate messages**. Reminder 1 is required. Reply `NONE` when asked for Reminder 2 to opt out. At the end of setup, VIKI asks whether the schedule should repeat; reply `Once`/`None`, `Daily`, `Weekly`, or `Monthly`. If both reminder times are supplied, Reminder 2 must be later than Reminder 1 and both times produce local notifications when enabled; optional configured email delivery uses the same subject, body, and recipients.
-
-```text
-VIKI: When should Reminder 1 send?
-OPERATOR: October 10, 2026 at 9:00 AM
-VIKI: When should Reminder 2 send? Enter a Tucson date/time, or reply NONE.
-OPERATOR: October 10, 2026 at 1:00 PM
-```
-
-Common ISO, US numeric, month-name, `today`, `tomorrow`, and relative inputs such as `in 2 hours` are handled locally. Reminder date parsing never calls the configured model.
-
-Reminder scheduling uses Tucson, Arizona (`America/Phoenix`, UTC−07:00/MST year-round) regardless of the device's configured timezone. On the hosted app, VIKI periodically reads the same-origin HTTP `Date` response header as a server-clock reference and falls back to the device clock if the network is unavailable. Inputs such as `today @ 5:30pm` and confirmation corrections such as `set it to 5:30pm` therefore mean 5:30 PM Tucson time. Explicit offsets such as `Z`, `-04:00`, or `+01:00` remain absolute instants. Validation messages, registry fields, reports, and EmailJS reminder timestamps are all displayed in MST.
-
-For optional email delivery, configure the independent **Reminder Emails [EmailJS]** section with Abel's and Anna's reference addresses plus a reminder-specific EmailJS service ID, template ID, and public key. A reminder can target Abel, Anna, both, or one or more custom addresses entered during creation. The reminder EmailJS template should use:
-
-```text
-To Email: {{to_email}}
-Subject: {{reminder_subject}}
-Body/notes: {{reminder_body}}
-Reminder send time: {{reminder_datetime}}
-Which send: {{reminder_number}}
-Reminder 1 time: {{reminder_1_datetime}}
-Reminder 2 time: {{reminder_2_datetime}}
-```
-
-Pending and sent reminders save locally and are included in explicit optional Supabase transfers. EmailJS delivery checks run when VIKI loads and once per minute while it remains open; they are separate from native local notifications. Email is not guaranteed while the APK is closed, and GitHub Pages cannot execute scheduled browser JavaScript while every VIKI tab is closed. Enter `Reminders` or `List reminders` to review pending schedules.
-
-Select the **ASSET_REGISTRY** title to switch to **REMINDER_REG**. Reminder cards expose the subject, optional email body, recipients, required Reminder 1 time, optional Reminder 2 time, and Once/None, Daily, Weekly, or Monthly repeat setting for direct editing. Each card can be saved or deleted, and the registry can be filtered to all reminders or those addressed to the configured Abel or Anna email. Select the title again to return to assets. The shortened reminder title remains on one line beside the registry actions at default zoom, while the stacked mobile layout and installable PWA use the same controls.

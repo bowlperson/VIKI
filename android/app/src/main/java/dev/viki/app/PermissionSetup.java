@@ -28,10 +28,10 @@ final class PermissionSetup {
         content.addView(text("Your inventory stays on this phone. No Google services, account, or network permission prompt is needed for local inventory. Android asks separately about alerts and precise timing.",15,Color.rgb(199,213,229)));
         notifications=text("",15,Color.WHITE);content.addView(notifications);
         notificationButton=button("Enable notifications");notificationButton.setOnClickListener(view->{optedIn=true;activity.getPreferences(0).edit().putBoolean("setupNotificationOptInPending",true).apply();activity.requestNotifications();});content.addView(notificationButton);
-        content.addView(text("Notifications display scheduled reminders and inventory summaries while VIKI is closed. You can decline and keep using local inventory.",14,Color.rgb(168,186,207)));
+        content.addView(text("Notifications display scheduled inventory alerts and inventory summaries while VIKI is closed. You can decline and keep using local inventory.",14,Color.rgb(168,186,207)));
         exact=text("",15,Color.WHITE);content.addView(exact);
-        exactButton=button("Allow precise reminders");exactButton.setOnClickListener(view->activity.requestPreciseAlarms());content.addView(exactButton);
-        content.addView(text("Precise alarm access improves delivery while the phone is idle. Without it, reminders can be delayed. Force-stopping, powering off, or disabling notifications prevents delivery. Enable VIKI's notification options in Settings when you are ready.",14,Color.rgb(168,186,207)));
+        exactButton=button("Allow precise inventory alerts");exactButton.setOnClickListener(view->activity.requestPreciseAlarms());content.addView(exactButton);
+        content.addView(text("Precise alarm access improves delivery while the phone is idle. Without it, inventory alerts can be delayed. Force-stopping, powering off, or disabling notifications prevents delivery. Enable VIKI's notification options in Settings when you are ready.",14,Color.rgb(168,186,207)));
         continueButton=button("Continue");continueButton.setOnClickListener(view->{dialog.dismiss();activity.setupFinished(optedIn);});content.addView(continueButton);
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(false);scroll.addView(content,new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));
         dialog=new AlertDialog.Builder(activity).setView(scroll).setCancelable(false).create();dialog.show();
@@ -45,7 +45,7 @@ final class PermissionSetup {
         exact.setText(precise?R.string.setup_exact_allowed:R.string.setup_exact_optional);
         notificationButton.setText(notify?"Enable VIKI alerts":"Enable notifications");
         exactButton.setEnabled(!precise);
-        exactButton.setText(precise?"Precise alarms enabled":"Allow precise reminders");
+        exactButton.setText(precise?"Precise alarms enabled":"Allow precise inventory alerts");
         continueButton.setText(!notify?"Continue without alerts":!optedIn?"Continue":precise?"Continue to VIKI":"Continue with approximate timing");
     }
 }

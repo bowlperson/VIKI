@@ -50,16 +50,6 @@
                 id: `inventory:${batch}:${stage.key}`, at: Math.round(stage.at), title: `VIKI: ${String(item.name).slice(0, 100)}`, body: stage.body, repeat: null, kind: 'milestone'
             });
         }
-        if (config.reminders) for (const reminder of state.reminders || []) {
-            if (['cancelled', 'deleted'].includes(reminder.status)) continue;
-            const repeat = repeatOf(reminder.repeat);
-            // Email delivery flags do not determine local notification delivery.
-            for (const [number, value] of [[1, reminder.reminder_datetime], [2, reminder.second_reminder_datetime]]) {
-                const at = timestamp(value);
-                if (!Number.isFinite(at)) continue;
-                events.push({ id: `reminder:${identity(reminder.id ?? reminder.subject)}:${number}:${at}`, at, title: String(reminder.subject || 'VIKI reminder').slice(0, 150), body: String(reminder.body || 'Your scheduled VIKI reminder.').slice(0, 2000), repeat, kind: 'reminder' });
-            }
-        }
         // Refuse rather than silently lose schedules in pathological imports.
         if (events.length > 4096) throw new RangeError('Too many notification events. Reduce inventory alerts or reminders.');
         return events.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));

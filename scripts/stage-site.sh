@@ -3,7 +3,7 @@
 set -euo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "$repo_dir"
-(cd downloads && sha256sum --check viki-debug.apk.sha256)
+(cd downloads && sha256sum --check viki-beta.apk.sha256)
 mkdir -p _site/downloads
-cp index.html viki-personality.js viki-storage.js viki-notifications.js manifest.json sw.js mobile-ui.css mobile-ui.js viki-inbox.js viki-help.js viki-data.js _site/
-cp downloads/index.html downloads/viki-debug.apk downloads/viki-debug.apk.sha256 _site/downloads/
+cp index.html viki-personality.js viki-storage.js viki-notifications.js manifest.json sw.js mobile-ui.css mobile-ui.js viki-inbox.js viki-help.js viki-data.js viki-terminal.js _site/
+cp downloads/index.html downloads/viki-beta.apk downloads/viki-beta.apk.sha256 _site/downloads/

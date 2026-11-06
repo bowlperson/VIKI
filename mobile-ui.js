@@ -7,16 +7,18 @@
         violet: {accent:'#c7a0ff', background:'#100d1a', text:'#f1eafa', secondary:'#72dfdf'},
         amber: {accent:'#ffc46e', background:'#17110b', text:'#f5ecd9', secondary:'#90dfb0'}
     };
+    THEMES.red={accent:'#ff5864',background:'#0b1018',text:'#f7dc86',secondary:'#59e7ed'};
     const LOCATIONS={mint:{fridge:'#5ce8bf',freezer:'#79bbff',cupboard:'#edbe76'},violet:{fridge:'#80e0ca',freezer:'#b8adff',cupboard:'#efb38c'},amber:{fridge:'#b9dc9b',freezer:'#99c9e8',cupboard:'#ffc46e'},custom:{fridge:'#5ce8bf',freezer:'#79bbff',cupboard:'#edbe76'}};
+    LOCATIONS.red={fridge:'#59e7ed',freezer:'#b59bff',cupboard:'#f7dc86'};
     const FONTS = {system:'system-ui, -apple-system, sans-serif', mono:'ui-monospace, "Cascadia Code", "DejaVu Sans Mono", monospace', serif:'Georgia, "Noto Serif", serif', readable:'Verdana, "DejaVu Sans", sans-serif'};
-    const DEFAULTS = {theme:'mint', accent:'#5ce8bf', background:'#091311', text:'#e2eeea', font:'system', scale:1, chatScale:1, mono:false, paletteOverrides:{}, reducedMotion:false, fullscreen:true};
+    const DEFAULTS = {theme:'mint', accent:'#5ce8bf', background:'#091311', text:'#e2eeea', font:'system', scale:1, chatScale:1, mono:false, typewriter:true, typeSpeed:45, tapSkip:true, paletteOverrides:{}, reducedMotion:false, fullscreen:true};
     let initialized = false, previousView = 'chat', activeCategory = 'appearance';
     const $ = id => document.getElementById(id);
     function readAppearance() {
         try { const saved=localStorage.getItem(KEY);const initial={...DEFAULTS};if(!saved&&root.VikiNative?.fullscreenStatus)initial.fullscreen=Boolean(root.VikiNative.fullscreenStatus());return {...initial, ...JSON.parse(saved || '{}')}; }
         catch (_) { return {...DEFAULTS}; }
     }
-    let appearance = readAppearance();
+    let appearance = readAppearance(), committed=JSON.parse(JSON.stringify(appearance)), dirty=false;
     const color = (value, fallback) => /^#[a-f\d]{6}$/i.test(value) ? value : fallback;
     function luminance(hex) {
         const rgb = hex.slice(1).match(/../g).map(part=>parseInt(part,16)/255).map(n=>n <= .04045 ? n/12.92 : ((n+.055)/1.055)**2.4);
@@ -30,7 +32,7 @@
         const style=document.documentElement.style;
         // Custom colors remain readable even when an imported preference has low contrast.
         const text = contrast(theme.text,theme.background)>=4.5 ? theme.text : (luminance(theme.background)>.18?'#111111':'#f5f8f7');
-        const overrides=appearance.paletteOverrides?.[appearance.theme]||{};
+        const overrides=appearance.theme==='custom'?(appearance.paletteOverrides?.custom||{}):{};
         const primary=color(overrides.primary,theme.accent);
         const accent = contrast(primary,theme.background)>=3 ? primary : text;
         const secondary=color(overrides.secondary,theme.secondary);
@@ -45,25 +47,38 @@
         document.body.classList.toggle('reduced-motion',Boolean(appearance.reducedMotion));
         document.documentElement.dataset.theme=appearance.theme;
         document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme.background);
-        if(root.VikiNative?.setFullscreen) root.VikiNative.setFullscreen(Boolean(appearance.fullscreen));
+        if(root.VikiNative?.setFullscreen && !dirty) root.VikiNative.setFullscreen(Boolean(appearance.fullscreen));
         const status=$('appearanceStatus');
-        if(status) status.textContent=(text!==theme.text||accent!==primary)?'Theme saved. Low-contrast colors were adjusted for readability.':'Saved on this device. Changes apply immediately.';
+        if(status) status.textContent=(text!==theme.text||accent!==primary)?'Theme saved. Low-contrast colors were adjusted for readability.':(dirty?'Preview only. Save & confirm to keep these settings.':'Saved on this device.');
     }
-    function saveAppearance() { localStorage.setItem(KEY,JSON.stringify(appearance));applyAppearance(); }
+    function makeCustom(){
+        if(!THEMES[appearance.theme])return;
+        const theme=THEMES[appearance.theme],locations=LOCATIONS[appearance.theme];
+        Object.assign(appearance,{accent:theme.accent,background:theme.background,text:theme.text});
+        appearance.paletteOverrides={custom:{primary:theme.accent,secondary:theme.secondary,...locations}};appearance.theme='custom';
+    }
+    function saveAppearance(){dirty=true;applyAppearance();updateThemeControls();}
+    function confirmAppearance(leaving=true){
+        if(!dirty)return true;
+        if(root.confirm('Confirm to change these settings?')){localStorage.setItem(KEY,JSON.stringify(appearance));committed=JSON.parse(JSON.stringify(appearance));dirty=false;applyAppearance();if($('appearanceStatus'))$('appearanceStatus').textContent='Appearance saved on this device.';}
+        else if(leaving){appearance=JSON.parse(JSON.stringify(committed));dirty=false;applyAppearance();const old=document.querySelector('.appearance-section');old?.replaceWith(buildAppearance());updateThemeControls();}
+        else return false;
+        return true;
+    }
     function node(tag,cls,text) { const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e; }
     function inputRow(labelText,input) { const label=node('label','appearance-field');label.append(node('span','config-label',labelText),input);return label; }
     function buildAppearance() {
         const section=node('section','settings-section appearance-section');section.dataset.category='appearance';
         section.append(node('h2','config-title','Appearance & display'),node('p','config-help','A quieter cyberpunk interface, tuned to your screen. Appearance stays on this device.'));
         const themes=node('div','theme-options');themes.setAttribute('aria-label','Color theme');
-        for(const [key,label] of [['mint','Neon mint'],['violet','Electric violet'],['amber','Amber terminal'],['custom','Custom']]) {
+        for(const [key,label] of [['mint','Neon mint'],['violet','Electric violet'],['amber','Amber terminal'],['red','CyberPunk Red'],['custom','Custom']]) {
             const button=node('button','theme-option',label);button.type='button';button.dataset.theme=key;button.setAttribute('aria-pressed',String(appearance.theme===key));
             const swatch=node('span','theme-swatch');swatch.style.background=(THEMES[key]||{accent:appearance.accent}).accent;swatch.setAttribute('aria-hidden','true');button.prepend(swatch);
-            button.onclick=()=>{appearance.theme=key;saveAppearance();updateThemeControls();};themes.append(button);
+            button.onclick=()=>{if(key==='custom'){makeCustom();appearance.theme='custom';}else appearance={...DEFAULTS,theme:key,paletteOverrides:{}};saveAppearance();section.replaceWith(buildAppearance());updateThemeControls();};themes.append(button);
         }
         section.append(themes);
         const colors=node('div','custom-colors');colors.id='customThemeColors';
-        for(const [key,label] of [['accent','Accent'],['background','Background'],['text','Text']]) {
+        for(const [key,label] of [['background','Background'],['text','Text']]) {
             const input=node('input');input.type='color';input.id=`theme${key[0].toUpperCase()+key.slice(1)}`;input.value=color(appearance[key],DEFAULTS[key]);
             input.oninput=()=>{appearance[key]=input.value;appearance.theme='custom';saveAppearance();updateThemeControls();};colors.append(inputRow(label,input));
         }
@@ -82,13 +97,18 @@
             input.oninput=()=>{appearance.paletteOverrides ||= {};appearance.paletteOverrides[appearance.theme] ||= {};appearance.paletteOverrides[appearance.theme][key]=input.value;saveAppearance();};palette.append(inputRow(label,input));
         }
         const mono=node('input');mono.type='checkbox';mono.id='monoAccent';mono.checked=Boolean(appearance.mono);mono.onchange=()=>{appearance.mono=mono.checked;saveAppearance();};palette.append(inputRow('Mono accents (keep location colors)',mono));
-        const reset=node('button','config-button','Reset this theme’s accent and tag colors');reset.type='button';reset.onclick=()=>{if(appearance.paletteOverrides)delete appearance.paletteOverrides[appearance.theme];saveAppearance();updateThemeControls();};palette.append(reset);section.append(palette);
+        const reset=node('button','config-button','Reset this theme’s accent and tag colors');reset.type='button';reset.onclick=()=>{makeCustom();if(appearance.paletteOverrides)delete appearance.paletteOverrides[appearance.theme];saveAppearance();updateThemeControls();};palette.append(reset);section.append(palette);
         for(const [key,label,help] of [['reducedMotion','Reduce motion','Disable decorative animation and transitions.'],['fullscreen','Fullscreen & auto-hide system bars',root.VikiNative?'Swipe from the screen edge to reveal Android system bars.':'On Android, status and navigation bars hide automatically. Browser fullscreen needs a tap.']]) {
             const row=node('label','appearance-toggle');const input=node('input');input.type='checkbox';input.id=key==='fullscreen'?'fullscreenEnabled':'reduceMotion';input.checked=Boolean(appearance[key]);
             input.onchange=()=>{appearance[key]=input.checked;saveAppearance();};const copy=node('span');copy.append(node('span','',label),node('small','',help));row.append(input,copy);section.append(row);
         }
         if(!root.VikiNative) {const fullscreen=node('button','config-button','Enter browser fullscreen');fullscreen.type='button';fullscreen.onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch(_){$('appearanceStatus').textContent='Fullscreen is not available in this browser.';}};section.append(fullscreen);}
-        const preview=node('div','appearance-preview');preview.append(node('small','','VIKI / SYSTEM ONLINE'),node('strong','','Make room for everyday life.'),node('span','','Add milk, 2 bread, and eggs'));section.append(preview);
+        for(const [key,label] of [['typewriter','Terminal typing'],['tapSkip','Tap to skip typing']]){const input=node('input');input.type='checkbox';input.id=key;input.checked=appearance[key]!==false;input.onchange=()=>{appearance[key]=input.checked;saveAppearance();};section.append(inputRow(label,input));}
+        const speed=node('input');speed.type='range';speed.min='10';speed.max='160';speed.step='5';speed.value=appearance.typeSpeed||45;speed.id='typeSpeed';const speedLabel=node('output','',`${speed.value} characters / second`);speed.oninput=()=>{appearance.typeSpeed=Number(speed.value);speedLabel.textContent=`${speed.value} characters / second`;saveAppearance();};section.append(inputRow('Terminal typing speed',speed),speedLabel);
+        const save=node('button','config-button','Save & confirm appearance');save.id='saveAppearanceButton';save.type='button';save.onclick=()=>confirmAppearance(false);section.append(save);
+        section.addEventListener('input',event=>{if(event.target.matches('input,select'))makeCustom();},true);
+        section.addEventListener('change',event=>{if(event.target.matches('input,select'))makeCustom();},true);
+        const preview=node('div' ,'appearance-preview');preview.append(node('small','','VIKI / SYSTEM ONLINE'),node('strong','','Make room for everyday life.'),node('span','','Add milk, 2 bread, and eggs'));section.append(preview);
         const status=node('p','config-help');status.id='appearanceStatus';status.setAttribute('role','status');section.append(status);
         return section;
     }
@@ -96,6 +116,7 @@
         document.querySelectorAll('.theme-option').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.theme===appearance.theme)));
         const overrides=appearance.paletteOverrides?.[appearance.theme]||{},theme=THEMES[appearance.theme]||appearance;
         for(const key of ['primary','secondary','fridge','freezer','cupboard']){const input=$('palette-'+key);if(input)input.value=color(overrides[key],key==='primary'?theme.accent:key==='secondary'?(theme.secondary||appearance.accent):(LOCATIONS[appearance.theme]||LOCATIONS.mint)[key]);}
+        for(const key of ['background','text']){const input=$('theme'+key[0].toUpperCase()+key.slice(1));if(input)input.value=appearance[key];}
         $('customThemeColors').hidden=appearance.theme!=='custom';
     }
     function classify(section) {
@@ -163,14 +184,14 @@
         if(view==='settings') {if(document.body.dataset.vikiView!=='settings')previousView=document.body.dataset.vikiView||'chat';root.setSettingsOpen?.(true);}
         else {
             previousView=view;root.setSettingsOpen?.(false);
-            if(view==='assets'||view==='reminders') {root.setRegistryView?.(view);$('registryTitleButton').textContent=view==='assets'?'Your inventory':'Reminders';}
+            if(view==='assets'||view==='reminders') {root.setRegistryView?.(view);$('registryTitleButton').textContent=view==='assets'?'Your inventory':'Notifications';}
         }
         paintView(view);
     }
     function buildNavigation() {
         const nav=node('nav','mobile-navigation');nav.id='mobileNavigation';nav.setAttribute('aria-label','Main navigation');
         const icons={chat:'◌',assets:'▦',reminders:'◷',settings:'⚙'};
-        for(const [view,label] of [['chat','Chat'],['assets','Assets'],['reminders','Reminders'],['settings','Settings']]){
+        for(const [view,label] of [['chat','Chat'],['assets','Assets'],['reminders','Notifications'],['settings','Settings']]){
             const button=node('button','mobile-nav-button');button.type='button';button.dataset.view=view;const icon=node('span','mobile-nav-icon',icons[view]);icon.setAttribute('aria-hidden','true');button.append(icon,node('span','',label));button.onclick=()=>selectView(view);nav.append(button);
         }
         document.body.append(nav);
@@ -178,7 +199,7 @@
         $('registryTitleButton').addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();selectView(document.body.dataset.vikiView==='reminders'?'assets':'reminders');},true);
         $('openSettingsButton').addEventListener('click',()=>{previousView=document.body.dataset.vikiView||'chat';},true);
         const logo=$('vikiLogo');logo.removeAttribute('aria-controls');logo.removeAttribute('aria-expanded');logo.setAttribute('aria-label','VIKI home');logo.title='VIKI home';
-        const caption=node('span','mobile-header-caption','Your everyday inventory');document.querySelector('.header-left').append(caption);
+        const caption=$('moneyIndicator');caption.classList.add('mobile-header-caption','header-cash-balance');document.querySelector('.header-left').append(caption);caption.hidden=false;
     }
     function upgradeLocations() {
         const source=document.querySelector('.filter-tabs');
@@ -211,5 +232,5 @@
         selectView('chat');
         document.body.classList.add('mobile-ui-ready');
     }
-    root.VikiMobile=Object.freeze({init,selectView,selectSettingsCategory,applyAppearance,appearance:()=>({...appearance})});
+    root.VikiMobile=Object.freeze({init,selectView,selectSettingsCategory,applyAppearance,confirmAppearance,appearance:()=>({...appearance})});
 })(window);
