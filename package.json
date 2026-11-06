@@ -1,0 +1,15 @@
+{
+  "name": "viki",
+  "version": "1.18.0",
+  "private": true,
+  "description": "Local-first VIKI browser and Android application",
+  "scripts": {
+    "start": "python3 -m http.server 8000 --bind 127.0.0.1",
+    "test": "node --test tests/*.test.cjs && node tests/app-browser.cjs && node tests/offline-browser.cjs",
+    "test:browser": "node tests/app-browser.cjs",
+    "android:build": "bash scripts/android-build.sh"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

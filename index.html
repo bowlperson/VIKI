@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.json">
     <title>VIKI // Virtual Inventory Keeper Intelligence</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        /* Use installed monospace fonts: no network font dependency. */
 
         :root {
             --terminal-bg: #0a0a0c;
@@ -1443,20 +1443,37 @@
                     <div class="config-help">Every addition searches preset names and tag keywords first. Only unmatched assets use powered inference or request shelf-life days in NO_LLM mode.</div>
                 </section>
                 <section class="settings-section">
-                    <div class="config-title">// SUPABASE DATABASE</div>
+                    <div class="config-title">// LOCAL STORAGE</div>
+                    <div class="config-help" id="localStorageStatus" role="status">Opening local database…</div>
+                    <div class="config-help">Inventory, presets, favorites, and reminders stay on this device. No account or network needed. Export backups before uninstalling or clearing app data.</div>
+                </section>
+                <section class="settings-section">
+                    <div class="config-title">// ON-DEVICE NOTIFICATIONS</div>
+                    <label class="config-label"><input id="localNotificationsEnabled" type="checkbox"> Enable local alerts and reminders</label>
+                    <label class="config-label"><input id="dailySummaryEnabled" type="checkbox"> Daily inventory summary</label>
+                    <div class="config-row"><label class="config-label" for="summaryTime">SUMMARY_TIME (DEVICE TIME)</label><input class="config-input" id="summaryTime" type="time" value="09:00"></div>
+                    <label class="config-label"><input id="milestonesEnabled" type="checkbox"> Item milestone alerts (30%, 15%, expired once)</label>
+                    <label class="config-label"><input id="localRemindersEnabled" type="checkbox"> Scheduled reminders</label>
+                    <div class="config-actions"><button class="config-button" id="saveNotificationSettingsButton" type="button">SAVE_NOTIFICATIONS</button><button class="config-button" id="exactAlarmButton" type="button">ALLOW_PRECISE_REMINDERS</button></div>
+                    <div class="config-help" id="notificationStatus" role="status"></div>
+                    <div class="config-help">Android can notify while closed, including Doze when precise-alarm access is allowed. Force-stopping, disabled notifications, or powering off prevents delivery. Browser reminders run only while VIKI is open. Reminder times use Tucson time; summaries use your device time. Email delivery is a separate optional feature.</div>
+                    <div id="localNotificationHistory"></div>
+                </section>
+                <section class="settings-section">
+                    <div class="config-title">// SUPABASE — OPTIONAL CLOUD COPY</div>
                     <div class="config-row"><label class="config-label" for="supabaseUrl">PROJECT_URL</label><input class="config-input" id="supabaseUrl" type="url" placeholder="https://project.supabase.co"></div>
                     <div class="config-row"><label class="config-label" for="supabaseAnonKey">ANON_KEY</label><input class="config-input" id="supabaseAnonKey" type="password" placeholder="SUPABASE_ANON_KEY"></div>
                     <div class="config-row"><label class="config-label" for="supabaseEmail">LOGIN_EMAIL</label><input class="config-input" id="supabaseEmail" type="email" autocomplete="username" placeholder="operator@example.com"></div>
                     <div class="config-row"><label class="config-label" for="supabasePassword">LOGIN_PASSWORD</label><input class="config-input" id="supabasePassword" type="password" autocomplete="current-password" placeholder="NOT SAVED"></div>
-                    <div class="config-help" id="supabaseStatus">Inventory, presets, and favorite rules are stored in your private Supabase row. The password is used only to sign in and is never saved.</div>
-                    <div class="config-actions"><button type="button" class="config-button" id="connectSupabaseButton">CONNECT_AND_SYNC</button><button type="button" class="config-button" id="disconnectSupabaseButton">DISCONNECT</button></div>
+                    <div class="config-help" id="supabaseStatus">Disconnected by default. Your registry is saved locally. Connect only to explicitly download or upload a cloud copy. The password is never saved.</div>
+                    <div class="config-actions"><button type="button" class="config-button" id="connectSupabaseButton">CONNECT</button><button type="button" class="config-button" id="disconnectSupabaseButton">DISCONNECT</button><button type="button" class="config-button" id="downloadSupabaseButton">DOWNLOAD_CLOUD_COPY</button><button type="button" class="config-button" id="uploadSupabaseButton">UPLOAD_LOCAL_COPY</button></div>
                 </section>
                 <section class="settings-section">
                     <div class="config-title">// CASH PROFILES</div>
                     <div class="config-row"><label class="config-label" for="newCashProfileName">CREATE_PROFILE</label><input class="config-input" id="newCashProfileName" type="text" maxlength="40" placeholder="PROFILE NAME" disabled></div>
                     <div class="config-actions"><button type="button" class="config-button" id="createCashProfileButton" disabled>CREATE</button></div>
                     <div class="config-row"><label class="config-label" for="cashProfileSelect">SELECT_PROFILE</label><select class="config-select" id="cashProfileSelect" disabled><option value="">None</option></select></div>
-                    <div class="config-help" id="cashProfileStatus">Connect to Supabase to access cash profiles. A saved profile earns $250 for every asset or reminder added.</div>
+                    <div class="config-help" id="cashProfileStatus">Cash profiles are saved on this device. A saved profile earns $250 for every asset or reminder added.</div>
                     <div class="config-actions"><button type="button" class="config-button" id="saveCashProfileButton" disabled>SAVE_PROFILE</button><button type="button" class="config-button" id="openSlotMachineButton" disabled>DAILY_CASH</button></div>
                 </section>
                 <section class="settings-section">
@@ -1539,6 +1556,8 @@
     </div>
     <canvas class="reward-canvas" id="rewardCanvas" aria-hidden="true"></canvas>
 
+    <script src="viki-storage.js"></script>
+    <script src="viki-notifications.js"></script>
     <script src="viki-personality.js"></script>
     <script>
         // --- CONFIGURATION ---
@@ -1611,7 +1630,9 @@
         let latestDailyBriefingData = null;
         let databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [] };
         let supabaseSession = null;
-        let syncTimer = null;
+        let storageReady = false;
+        let localSave = Promise.resolve();
+        document.body.inert = true;
         let cashProfiles = [];
         let reminderClockOffsetMs = 0;
         const mobileLayoutQuery = window.matchMedia('(max-width: 780px)');
@@ -1697,13 +1718,18 @@
         }
 
         async function loadRemoteState() {
-            if (!supabaseSession?.user?.id) return false;
+            if (!supabaseSession?.user?.id) throw new Error('Connect to Supabase first.');
             const rows = await supabaseRequest(`/rest/v1/viki_state?user_id=eq.${encodeURIComponent(supabaseSession.user.id)}&select=state`);
-            if (rows[0]?.state) databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [], ...rows[0].state };
-            else await persistRemoteState();
-            setSupabaseStatus(`Connected as ${supabaseSession.user.email}. Remote registry synchronized.`);
+            if (!rows[0]?.state) throw new Error('No saved Supabase registry. Upload your local data to create one.');
+            const imported = VikiStorage.validate({ inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [], ...rows[0].state, notificationSettings: notificationSettings(), notificationHistory: databaseState.notificationHistory || {}, notificationSnoozes: databaseState.notificationSnoozes || [] });
+            if (!window.confirm('Replace this device’s local registry with the Supabase copy? Export a backup first if you need to keep both.')) return;
+            await VikiStorage.save(imported);
+            databaseState = imported;
+            loadNotificationSettings();
             await loadCashProfiles();
-            return true;
+            refreshNotificationSchedule();
+            renderSortingRules(); renderInventory();
+            setSupabaseStatus('Supabase copy downloaded and saved locally. Changes stay local until you upload again.');
         }
 
         function formatCash(value) {
@@ -1738,8 +1764,7 @@
         }
 
         async function loadCashProfiles() {
-            if (!supabaseSession?.user?.id) return;
-            setCashControlsEnabled(true);
+            setCashControlsEnabled(storageReady);
             cashProfiles = Array.isArray(databaseState.cashProfiles) ? databaseState.cashProfiles : [];
             cashProfiles.sort((a, b) => a.name.localeCompare(b.name));
             databaseState.cashProfiles = cashProfiles;
@@ -1747,7 +1772,7 @@
         }
 
         async function createCashProfile() {
-            if (!supabaseSession?.user?.id) return;
+            requireLocalStorage();
             const input = document.getElementById('newCashProfileName');
             const name = input.value.trim();
             if (!name) { document.getElementById('cashProfileStatus').textContent = 'Enter a profile name.'; return; }
@@ -1762,7 +1787,7 @@
                 };
                 cashProfiles.push(created);
                 databaseState.cashProfiles = cashProfiles;
-                await persistRemoteState();
+                await persistLocalState();
                 input.value = '';
                 await loadCashProfiles();
                 document.getElementById('cashProfileSelect').value = created.id;
@@ -1798,12 +1823,12 @@
 
         async function earnCashForRegistryAddition() {
             const profileId = localStorage.getItem(CASH_PROFILE_KEY);
-            if (!profileId || !supabaseSession?.user?.id || !cashProfiles.some(profile => profile.id === profileId)) return;
+            if (!profileId || !storageReady || !cashProfiles.some(profile => profile.id === profileId)) return;
             const profile = cashProfiles.find(entry => entry.id === profileId);
             profile.balance = Math.max(0, Number(profile.balance) || 0) + 250;
             databaseState.cashProfiles = cashProfiles;
             setMoneyIndicator(profile.balance);
-            queueRemoteSave();
+            queueLocalSave();
             showCashReward(250);
         }
 
@@ -1949,7 +1974,7 @@
 
         function getActiveCashProfile() {
             const id = localStorage.getItem(CASH_PROFILE_KEY);
-            return supabaseSession?.user?.id ? cashProfiles.find(profile => profile.id === id) : null;
+            return storageReady ? cashProfiles.find(profile => profile.id === id) : null;
         }
 
         function getCashDayKey() {
@@ -2066,7 +2091,7 @@
             if (free) profile.lastFreeSpinDate = getCashDayKey();
             databaseState.cashProfiles = cashProfiles;
             setMoneyIndicator(profile.balance);
-            queueRemoteSave();
+            queueLocalSave();
             updateSlotMachine();
             document.getElementById('slotWinnings').textContent = 'WINNINGS …';
             if (guaranteedJackpot) updateLuckMeter(profile, true);
@@ -2088,7 +2113,7 @@
             }
             databaseState.cashProfiles = cashProfiles;
             setMoneyIndicator(profile.balance);
-            queueRemoteSave();
+            queueLocalSave();
             slotSpinning = false;
             updateSlotMachine();
             document.getElementById('slotWinnings').textContent = winnings ? `${jackpot ? 'JACKPOT · ' : 'WINNINGS '}${formatCash(winnings)}` : 'WINNINGS $0';
@@ -2241,7 +2266,7 @@
             profile.game2048 = { board: Array(16).fill(0), score: 0, active: true, claimed: [], totalPrizes: 0 };
             spawn2048Tile(profile.game2048.board); spawn2048Tile(profile.game2048.board);
             databaseState.cashProfiles = cashProfiles;
-            setMoneyIndicator(profile.balance); queueRemoteSave(); render2048();
+            setMoneyIndicator(profile.balance); queueLocalSave(); render2048();
             addMessage(`2048 GAME: ${entryCost ? `${formatCash(entryCost)} wager placed` : 'free entry activated'}.`, 'assistant');
         }
 
@@ -2252,7 +2277,7 @@
             profile.game2048HighScore = Math.max(Number(profile.game2048HighScore) || 0, Number(game.score) || 0);
             profile.game2048 = { board: Array(16).fill(0), score: 0, active: false, claimed: [], totalPrizes: 0 };
             game2048Animation = null;
-            databaseState.cashProfiles = cashProfiles; queueRemoteSave(); render2048();
+            databaseState.cashProfiles = cashProfiles; queueLocalSave(); render2048();
             addMessage('2048 game ended and board reset. High score preserved.', 'assistant');
         }
 
@@ -2328,22 +2353,146 @@
                 setMoneyIndicator(profile.balance); showCashReward(prize);
                 addMessage(`2048 PRIZE: ${formatCash(prize)} awarded at score ${game.score.toLocaleString('en-US')}.`, 'assistant');
             }
-            databaseState.cashProfiles = cashProfiles; queueRemoteSave(); render2048();
+            databaseState.cashProfiles = cashProfiles; queueLocalSave(); render2048();
             return true;
         }
 
-        async function persistRemoteState() {
-            if (!supabaseSession?.user?.id) { setSupabaseStatus('Not connected. Changes remain in memory and are not saved.', true); return; }
-            await supabaseRequest('/rest/v1/viki_state?on_conflict=user_id', {
-                method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-                body: JSON.stringify({ user_id: supabaseSession.user.id, state: databaseState, updated_at: new Date().toISOString() })
-            });
-            setSupabaseStatus(`Connected as ${supabaseSession.user.email}. All changes saved to Supabase.`);
+        let browserNotificationEvents = [];
+        let checkingNotifications = false;
+        function notificationSettings() { return VikiNotifications.options(databaseState.notificationSettings || {}); }
+
+        function loadNotificationSettings() {
+            const settings = notificationSettings();
+            document.getElementById('localNotificationsEnabled').checked = settings.enabled;
+            document.getElementById('dailySummaryEnabled').checked = settings.dailySummary;
+            document.getElementById('summaryTime').value = settings.summaryTime;
+            document.getElementById('milestonesEnabled').checked = settings.milestones;
+            document.getElementById('localRemindersEnabled').checked = settings.reminders;
+            document.getElementById('exactAlarmButton').hidden = !window.VikiNative;
+            renderNotificationHistory();
         }
 
-        function queueRemoteSave() {
-            clearTimeout(syncTimer);
-            syncTimer = setTimeout(() => persistRemoteState().catch(error => setSupabaseStatus(error.message, true)), 150);
+        async function saveNotificationSettings() {
+            try {
+                requireLocalStorage();
+                databaseState.notificationSettings = {
+                    enabled: document.getElementById('localNotificationsEnabled').checked,
+                    dailySummary: document.getElementById('dailySummaryEnabled').checked,
+                    summaryTime: document.getElementById('summaryTime').value || '09:00',
+                    milestones: document.getElementById('milestonesEnabled').checked,
+                    reminders: document.getElementById('localRemindersEnabled').checked
+                };
+                browserNotificationEvents = [];
+                if (!databaseState.notificationSettings.enabled) databaseState.notificationSnoozes = [];
+                await persistLocalState();
+                if (databaseState.notificationSettings.enabled && window.VikiNative) VikiNative.requestNotificationPermission();
+                else if (databaseState.notificationSettings.enabled && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+                refreshNotificationSchedule();
+            } catch (error) { document.getElementById('notificationStatus').textContent = error.message; }
+        }
+
+        function refreshNotificationSchedule() {
+            if (!storageReady) return;
+            try {
+                const settings = notificationSettings();
+                const events = VikiNotifications.plan(databaseState, settings);
+                if (window.VikiNative) {
+                    if (VikiNative.scheduleNotifications(JSON.stringify(events)) === false) throw new Error('Android could not save notification schedules.');
+                    const status = JSON.parse(VikiNative.notificationStatus());
+                    document.getElementById('notificationStatus').textContent = !settings.enabled ? 'Local notifications disabled.' : (!status.notificationsGranted ? 'Notifications blocked. Enable them in Android app settings.' : `Android notifications enabled. Timing: ${status.exactAlarmsGranted ? 'precise, including idle' : 'approximate; allow precise reminders for Doze delivery'}.`);
+                } else {
+                    // Retain today's digest anchor across saves and checks.
+                    const previousDigest = browserNotificationEvents.find(e => e.kind === 'digest');
+                    const digest = events.find(e => e.kind === 'digest');
+                    if (digest && previousDigest && new Date(digest.at).toTimeString().slice(0,5) === new Date(previousDigest.at).toTimeString().slice(0,5)) digest.at = previousDigest.at;
+                    browserNotificationEvents = events;
+                    document.getElementById('notificationStatus').textContent = settings.enabled ? 'Browser alerts enabled while this tab is open. Android delivers scheduled alerts while closed.' : 'Local notifications disabled.';
+                    void checkLocalNotifications();
+                }
+            } catch (error) { document.getElementById('notificationStatus').textContent = `Notification scheduling failed: ${error.message}`; }
+        }
+
+        async function checkLocalNotifications() {
+            if (window.VikiNative || !storageReady || checkingNotifications || !notificationSettings().enabled) return;
+            checkingNotifications = true;
+            try {
+                const now = Date.now();
+                const history = databaseState.notificationHistory ||= {};
+                let changed = false;
+                const snoozes = databaseState.notificationSnoozes || [];
+                for (const event of [...browserNotificationEvents, ...snoozes]) {
+                    const occurrence = VikiNotifications.occurrenceAt(event, now);
+                    const key = event.repeat ? `${event.id}:${occurrence}` : event.id;
+                    if (occurrence > now || history[key]) continue;
+                    const body = event.kind === 'digest' ? VikiNotifications.digestBody(databaseState, now) : event.body;
+                    history[key] = { at: now, title: event.title, body, status: body ? 'delivered' : 'empty' };
+                    changed = true;
+                    if (!body) continue;
+                    addMessage(`${event.title}\n${body}`, 'system');
+                    if ('Notification' in window && Notification.permission === 'granted') {
+                        try { new Notification(event.title, {body, tag: key}); }
+                        catch (error) { document.getElementById('notificationStatus').textContent = 'System notification unavailable; the alert is shown in VIKI.'; }
+                    }
+                }
+                if (changed) {
+                    databaseState.notificationSnoozes = snoozes.filter(e => e.at > now);
+                    await VikiStorage.save(databaseState);
+                    renderNotificationHistory();
+                }
+            } catch (error) { document.getElementById('notificationStatus').textContent = `Notification delivery failed: ${error.message}`; }
+            finally { checkingNotifications = false; }
+        }
+
+        function renderNotificationHistory() {
+            const container = document.getElementById('localNotificationHistory');
+            container.replaceChildren();
+            if (window.VikiNative) return; // Android notification shade provides Seen/Snooze actions.
+            Object.entries(databaseState.notificationHistory || {}).filter(([,entry]) => entry.body).sort((a,b) => b[1].at - a[1].at).slice(0,20).forEach(([key,entry]) => {
+                const row = document.createElement('div'); row.className = 'config-help';
+                const text = document.createElement('p'); text.textContent = `${entry.title}: ${entry.body} (${entry.status})`; row.append(text);
+                if (entry.status === 'delivered') for (const action of ['Seen', 'Snooze 1 day']) {
+                    const button = document.createElement('button'); button.type = 'button'; button.className = 'config-button'; button.textContent = action;
+                    button.onclick = async () => {
+                        entry.status = action === 'Seen' ? 'seen' : 'snoozed';
+                        if (entry.status === 'snoozed') (databaseState.notificationSnoozes ||= []).push({ id: `${key}:snooze:${Date.now()}`, at: Date.now()+MS_PER_DAY, title: entry.title, body: entry.body, repeat: null });
+                        await persistLocalState(); renderNotificationHistory();
+                    };
+                    row.append(button);
+                }
+                container.append(row);
+            });
+        }
+
+        function requireLocalStorage() {
+            if (!storageReady) throw new Error('Local database unavailable. Reload or export your data before continuing.');
+        }
+
+        async function persistLocalState() {
+            requireLocalStorage();
+            localSave = VikiStorage.save(databaseState);
+            await localSave;
+            document.getElementById('localStorageStatus').textContent = `Saved on this device (${VikiStorage.backend}). Export backups to protect against device loss or clearing app data.`;
+            refreshNotificationSchedule();
+        }
+
+        async function persistRemoteState() {
+            await persistLocalState();
+            if (!supabaseSession?.user?.id) throw new Error('Connect to Supabase first. Your data is saved locally.');
+            if (!window.confirm('Replace the Supabase copy with this device’s local registry? Other devices will not be merged automatically.')) return;
+            const { notificationSettings: deviceSettings, notificationHistory: deviceHistory, notificationSnoozes: deviceSnoozes, ...cloudState } = databaseState;
+            await supabaseRequest('/rest/v1/viki_state?on_conflict=user_id', {
+                method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+                body: JSON.stringify({ user_id: supabaseSession.user.id, state: cloudState, updated_at: new Date().toISOString() })
+            });
+            setSupabaseStatus(`Uploaded local registry for ${supabaseSession.user.email}.`);
+        }
+
+        // Existing mutation paths all save locally; cloud transfers are explicit.
+        function queueLocalSave() {
+            persistLocalState().catch(error => {
+                document.getElementById('localStorageStatus').textContent = `SAVE FAILED: ${error.message}. Export a backup now. Changes may not survive closing the app.`;
+                addMessage(`Local save failed: ${error.message}`, 'error');
+            });
         }
 
         async function connectSupabase() {
@@ -2356,27 +2505,32 @@
             try {
                 await authenticateSupabase(document.getElementById('supabasePassword').value);
                 document.getElementById('supabasePassword').value = '';
-                await loadRemoteState();
-                renderSortingRules(); renderInventory(); checkExpiringItems(); checkDueReminders();
-                addMessage('Supabase connected. Remote data is now authoritative.', 'system');
+                setSupabaseStatus(`Connected as ${supabaseSession.user.email}. Choose Download or Upload to transfer data. Local data has not changed.`);
             } catch (error) { setSupabaseStatus(error.message, true); addMessage(error.message, 'error'); }
         }
 
         function disconnectSupabase() {
             supabaseSession = null;
             localStorage.removeItem(SUPABASE_SESSION_KEY);
-            databaseState = { inventory: [], presets: { ...DEFAULT_ASSETS }, favoriteRules: {}, reminders: [], cashProfiles: [] };
-            cashProfiles = [];
-            setCashControlsEnabled(false);
-            document.getElementById('cashProfileSelect').replaceChildren(new Option('None', ''));
-            setMoneyIndicator(0);
-            renderInventory(); renderSortingRules();
-            setSupabaseStatus('Disconnected. Connect to load or save registry data.', true);
+            setSupabaseStatus('Disconnected. All data remains saved on this device.');
         }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
-            await syncReminderClock();
+            try {
+                const saved = await VikiStorage.load();
+                if (saved) databaseState = saved;
+                if (localStorage.getItem(NO_LLM_KEY) === null) localStorage.setItem(NO_LLM_KEY, 'true');
+                storageReady = true;
+                if (!saved) await VikiStorage.save(databaseState);
+                document.getElementById('localStorageStatus').textContent = `Local database ready (${VikiStorage.backend}). No account required.`;
+            } catch (error) {
+                storageReady = false;
+                document.getElementById('localStorageStatus').textContent = `Local database unavailable: ${error.message}. Existing data has not been reset.`;
+                addMessage(`Local database unavailable: ${error.message}`, 'error');
+            } finally { document.body.inert = false; }
+            await loadCashProfiles();
+            loadNotificationSettings();
             const savedKey = localStorage.getItem('viki_api_key') || '';
             document.getElementById('apiKey').value = savedKey;
 
@@ -2390,8 +2544,7 @@
             document.getElementById('supabaseUrl').value = supabaseConfig.url;
             document.getElementById('supabaseAnonKey').value = supabaseConfig.anonKey;
             document.getElementById('supabaseEmail').value = supabaseConfig.email;
-            try { if (localStorage.getItem(SUPABASE_SESSION_KEY)) { await authenticateSupabase(); await loadRemoteState(); } }
-            catch (error) { localStorage.removeItem(SUPABASE_SESSION_KEY); setSupabaseStatus(`${error.message} Reconnect in Settings.`, true); }
+            // A saved cloud session never enables network access or replaces local data at startup.
 
             document.getElementById('fallbackLocation').value = localStorage.getItem(FALLBACK_LOCATION_KEY) || 'fridge';
             document.getElementById('matchingPriority').value = localStorage.getItem(MATCHING_PRIORITY_KEY) || 'exact_first';
@@ -2420,7 +2573,10 @@
                 if (!document.hidden) { refreshDegradationState(); scheduleWakeWordListening(); }
                 else if (isListening && getWakeWordSettings().enabled) recognition.stop();
             });
-            initializePWA();
+            if (!window.VikiNative) initializePWA();
+            refreshNotificationSchedule();
+            setInterval(checkLocalNotifications, 30000);
+            window.addEventListener('focus', refreshNotificationSchedule);
         });
 
         function refreshDegradationState() {
@@ -2470,9 +2626,11 @@
                 viki_categories: getAssetDatabase(),
                 favoriteRules: getFavoriteRules(),
                 reminders: getReminders(),
+                cashProfiles: databaseState.cashProfiles || [],
                 modelSettings: getModelSettingsForExport()
             };
 
+            if (window.VikiNative) { VikiNative.exportBackup(JSON.stringify(payload, null, 2)); return; }
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -2658,10 +2816,11 @@
 
         async function checkDueReminders() {
             const settings = getReminderEmailSettings();
-            if (!settings.enabled || !settings.serviceId || !settings.templateId || !settings.publicKey || !supabaseSession?.user?.id) return;
+            if (!settings.enabled || !settings.serviceId || !settings.templateId || !settings.publicKey) return;
             const now = getReminderNow();
             const pending = getReminders().filter(reminder => reminder.status === 'pending');
             for (const reminder of pending) {
+                if (!reminder.recipients?.length) continue;
                 let changed = false;
                 const deliveries = [
                     { number: 1, at: reminder.reminder_datetime, sentKey: 'first_sent_at' },
@@ -2681,7 +2840,7 @@
                     reminder.last_error = error.message;
                     if (!lastReported || now - lastReported >= 60 * 60 * 1000) {
                         reminder.last_error_at = now.toISOString();
-                        queueRemoteSave();
+                        queueLocalSave();
                         addMessage(`Reminder delivery failed: ${error.message}`, 'error');
                     }
                     }
@@ -2691,7 +2850,7 @@
                     else advanceRepeatingReminder(reminder, now);
                     changed = true;
                 }
-                if (changed) queueRemoteSave();
+                if (changed) queueLocalSave();
             }
         }
 
@@ -2705,11 +2864,14 @@
             if (repeat === 'daily') date.setUTCDate(date.getUTCDate() + 1);
             if (repeat === 'weekly') date.setUTCDate(date.getUTCDate() + 7);
             if (repeat === 'monthly') {
-                const day = date.getUTCDate();
-                date.setUTCDate(1);
-                date.setUTCMonth(date.getUTCMonth() + 1);
-                const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-                date.setUTCDate(Math.min(day, lastDay));
+                // Tucson uses UTC-07 year round; month/day arithmetic must use that calendar.
+                const local = new Date(date.getTime() - TUCSON_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+                const day = local.getUTCDate();
+                local.setUTCDate(1);
+                local.setUTCMonth(local.getUTCMonth() + 1);
+                const lastDay = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 0)).getUTCDate();
+                local.setUTCDate(Math.min(day, lastDay));
+                return new Date(local.getTime() + TUCSON_UTC_OFFSET_HOURS * 60 * 60 * 1000);
             }
             return date;
         }
@@ -2760,7 +2922,7 @@
                 && typeof reminder.body === 'string'
                 && typeof reminder.reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.reminder_datetime))
                 && (reminder.second_reminder_datetime == null || (typeof reminder.second_reminder_datetime === 'string' && !Number.isNaN(Date.parse(reminder.second_reminder_datetime))) || (typeof reminder.event_datetime === 'string' && !Number.isNaN(Date.parse(reminder.event_datetime))))
-                && Array.isArray(reminder.recipients) && reminder.recipients.length > 0 && reminder.recipients.every(isValidEmail)
+                && Array.isArray(reminder.recipients) && reminder.recipients.every(isValidEmail)
                 && (reminder.repeat == null || ['none', 'daily', 'weekly', 'monthly'].includes(reminder.repeat))
                 && ['pending', 'sent'].includes(reminder.status));
         }
@@ -2772,6 +2934,7 @@
 
         function validateImportPayload(payload) {
             if (!isPlainObject(payload)) throw new Error('Import root must be a JSON object.');
+            VikiStorage.validate({inventory: payload.viki_inventory_v2, presets: payload.viki_categories, favoriteRules: payload.favoriteRules || {}, reminders: payload.reminders || [], cashProfiles: payload.cashProfiles || []});
             if (payload.schemaVersion !== EXPORT_SCHEMA_VERSION) throw new Error(`Unsupported schema version: ${payload.schemaVersion}.`);
             if (!validateInventoryImport(payload.viki_inventory_v2)) throw new Error('Invalid viki_inventory_v2 shape.');
             if (!validateCategoriesImport(payload.viki_categories)) throw new Error('Invalid viki_categories shape.');
@@ -2780,12 +2943,19 @@
             if (!validateModelSettingsImport(payload.modelSettings)) throw new Error('Invalid modelSettings shape.');
         }
 
-        function applyImportedData(payload) {
-            databaseState.inventory = payload.viki_inventory_v2;
-            databaseState.presets = payload.viki_categories;
-            databaseState.favoriteRules = payload.favoriteRules || {};
-            databaseState.reminders = payload.reminders || [];
-            queueRemoteSave();
+        async function applyImportedData(payload) {
+            requireLocalStorage();
+            const imported = VikiStorage.validate({ ...databaseState,
+                inventory: payload.viki_inventory_v2,
+                presets: payload.viki_categories,
+                favoriteRules: payload.favoriteRules || {},
+                reminders: payload.reminders || [],
+                cashProfiles: payload.cashProfiles || []
+            });
+            await VikiStorage.save(imported);
+            databaseState = imported;
+            refreshNotificationSchedule();
+            await loadCashProfiles();
             MODEL_SETTINGS_KEYS.forEach(key => localStorage.removeItem(key));
             Object.entries(payload.modelSettings).forEach(([key, value]) => localStorage.setItem(key, value));
 
@@ -2806,7 +2976,8 @@
             try {
                 const payload = JSON.parse(await file.text());
                 validateImportPayload(payload);
-                applyImportedData(payload);
+                if (!window.confirm('Replace local inventory, presets, favorites, reminders, and cash profiles with this backup?')) return;
+                await applyImportedData(payload);
             } catch (error) {
                 addMessage(`IMPORT_DATA rejected: ${error.message}`, 'error');
             } finally {
@@ -2845,9 +3016,9 @@
         function getAssetDatabase() { return databaseState.presets || {}; }
 
         function saveAssetDatabase(db) {
-            if (!supabaseSession?.user?.id) throw new Error('Connect to Supabase before saving presets.');
+            requireLocalStorage();
             databaseState.presets = db;
-            queueRemoteSave();
+            queueLocalSave();
         }
 
         function loadAssetDatabase() {
@@ -3011,9 +3182,9 @@
         function getInventory() { return databaseState.inventory || []; }
 
         function saveInventory(items) {
-            if (!supabaseSession?.user?.id) throw new Error('Connect to Supabase before changing inventory.');
+            requireLocalStorage();
             databaseState.inventory = items;
-            queueRemoteSave();
+            queueLocalSave();
             renderInventory();
             checkExpiringItems();
         }
@@ -3527,7 +3698,7 @@
                 grid.className = 'reminder-card-grid';
                 grid.append(
                     field('SUBJECT', 'subject', 'text', reminder.subject),
-                    field('RECIPIENT EMAIL(S)', 'recipients', 'text', reminder.recipients.join(', ')),
+                    field('EMAIL(S) — OPTIONAL', 'recipients', 'text', reminder.recipients.join(', ')),
                     field('REMINDER 1', 'reminder_datetime', 'datetime-local', formatTucsonDateTimeLocal(reminder.reminder_datetime)),
                     field('REMINDER 2 (OPTIONAL)', 'second_reminder_datetime', 'datetime-local', reminder.second_reminder_datetime ? formatTucsonDateTimeLocal(reminder.second_reminder_datetime) : ''),
                     repeatField
@@ -3560,8 +3731,8 @@
             const recipients = parseRecipientField(value('recipients'));
             const sendAt = parseReminderDateValue(value('reminder_datetime'));
             const secondAt = value('second_reminder_datetime') ? parseReminderDateValue(value('second_reminder_datetime')) : null;
-            if (!value('subject') || !recipients.length || recipients.some(email => !isValidEmail(email)) || !sendAt || Number.isNaN(sendAt.getTime()) || (secondAt && Number.isNaN(secondAt.getTime()))) {
-                addMessage('Reminder save rejected. A subject, valid recipient email(s), and Reminder 1 are required.', 'error');
+            if (!value('subject') || recipients.some(email => !isValidEmail(email)) || !sendAt || Number.isNaN(sendAt.getTime()) || (secondAt && Number.isNaN(secondAt.getTime()))) {
+                addMessage('Reminder save rejected. A subject and Reminder 1 are required. Email recipients are optional.', 'error');
                 return;
             }
             if (secondAt && secondAt <= sendAt) {
@@ -3582,7 +3753,7 @@
                 reminder.second_sent_at = null;
                 reminder.sent_at = null;
             }
-            queueRemoteSave();
+            queueLocalSave();
             renderReminderRegistry();
             addMessage(`Reminder updated: ${reminder.subject}.`, 'system');
             checkDueReminders();
@@ -3592,7 +3763,7 @@
             const reminder = getReminders().find(entry => String(entry.id) === String(id));
             if (!reminder || !window.confirm(`Delete reminder “${reminder.subject}”?`)) return;
             databaseState.reminders = getReminders().filter(entry => String(entry.id) !== String(id));
-            queueRemoteSave();
+            queueLocalSave();
             renderReminderRegistry();
             addMessage(`Reminder deleted: ${reminder.subject}.`, 'system');
         }
@@ -3678,7 +3849,7 @@
                 else delete rules[name];
             });
             databaseState.favoriteRules = rules;
-            queueRemoteSave();
+            queueLocalSave();
             saveInventory(retainedItems);
             setRegistryEditMode(false);
             addMessage(`Manual registry changes saved.${removedIds.size ? ` Removed ${removedIds.size} item(s).` : ''}`, 'system');
@@ -4573,7 +4744,7 @@
         }
 
         function scheduleReminderDraft(draft) {
-            if (!supabaseSession?.user?.id) { addMessage('Connect to Supabase before scheduling reminders.', 'error'); return; }
+            requireLocalStorage();
             const reminder = {
                 id: typeof window.crypto?.randomUUID === 'function' ? window.crypto.randomUUID() : `reminder-${Date.now()}`,
                 subject: draft.subject,
@@ -4589,7 +4760,7 @@
                 second_sent_at: null
             };
             databaseState.reminders = [...getReminders(), reminder];
-            queueRemoteSave();
+            queueLocalSave();
             void earnCashForRegistryAddition();
             addMessage(`Reminder 1 scheduled for ${formatReminderDateTime(reminder.reminder_datetime)}.${reminder.second_reminder_datetime ? ` Reminder 2: ${formatReminderDateTime(reminder.second_reminder_datetime)}.` : ' Reminder 2: NONE.'} Repeat: ${reminder.repeat === 'none' ? 'ONCE' : reminder.repeat.toUpperCase()}.`, 'assistant');
         }
@@ -4601,7 +4772,7 @@
                 `Reminder 1: ${formatReminderDateTime(draft.reminder_datetime)}`,
                 `Reminder 2: ${draft.second_reminder_datetime ? formatReminderDateTime(draft.second_reminder_datetime) : 'None'}`,
                 `Repeat: ${normalizeReminderRepeat(draft.repeat) === 'none' ? 'Once / None' : normalizeReminderRepeat(draft.repeat)}`,
-                `Recipients: ${draft.recipients.join(', ')}`
+                `Recipients: ${draft.recipients.join(', ') || 'This device only'}`
             ].join('\n');
             pendingQuestions = {
                 questions: [],
@@ -4634,7 +4805,8 @@
         }
 
         function askReminderRecipient(draft) {
-            setReminderReplyHandler('Who should receive this reminder: Anna, Abel, both, or a custom email address? You may enter multiple custom addresses separated by commas.', reply => {
+            setReminderReplyHandler('Reply LOCAL for an on-device reminder, or enter optional email recipients: Anna, Abel, both, or custom email addresses.', reply => {
+                if (/^(local|none|skip|device)$/i.test(reply.trim())) { draft.recipients = []; askReminderRepeat(draft); return; }
                 const result = resolveReminderRecipients(reply);
                 if (result.error) { addMessage(result.error, 'error'); askReminderRecipient(draft); return; }
                 draft.recipients = result.recipients;
@@ -4886,7 +5058,7 @@
                 if (!profile) return { message: 'Connect to Supabase and save a cash profile before using this command.', responseRole: 'error' };
                 delete profile.lastFreeSpinDate;
                 databaseState.cashProfiles = cashProfiles;
-                queueRemoteSave();
+                queueLocalSave();
                 updateSlotMachine();
                 return { message: `Daily free spin restored for ${profile.name}.` };
             }
@@ -4900,7 +5072,7 @@
                 profile.balance = Math.round((Number(profile.balance) + amount) * 100) / 100;
                 databaseState.cashProfiles = cashProfiles;
                 setMoneyIndicator(profile.balance);
-                queueRemoteSave();
+                queueLocalSave();
                 showCashReward(amount);
                 return { message: `Developer cash allocation complete: +${formatCash(amount)}. ${profile.name} balance: ${formatCash(profile.balance)}.` };
             }
@@ -5617,6 +5789,13 @@
         document.getElementById('disableLLM').addEventListener('change', updateStatus);
         document.getElementById('matchingPriority').addEventListener('change', (e) => localStorage.setItem(MATCHING_PRIORITY_KEY, e.target.value));
         document.getElementById('fallbackLocation').addEventListener('change', (e) => localStorage.setItem(FALLBACK_LOCATION_KEY, e.target.value));
+        window.addEventListener('viki-native-resume', refreshNotificationSchedule);
+        window.addEventListener('viki-native-error', event => addMessage(String(event.detail), 'error'));
+        window.addEventListener('viki-backup-import', event => importDataFromFile(new Blob([event.detail], {type: 'application/json'})));
+        document.getElementById('saveNotificationSettingsButton').addEventListener('click', saveNotificationSettings);
+        document.getElementById('exactAlarmButton').addEventListener('click', () => { if (window.VikiNative) VikiNative.requestExactAlarmPermission(); });
+        document.getElementById('downloadSupabaseButton').addEventListener('click', () => loadRemoteState().catch(error => setSupabaseStatus(error.message, true)));
+        document.getElementById('uploadSupabaseButton').addEventListener('click', () => persistRemoteState().catch(error => setSupabaseStatus(error.message, true)));
         document.getElementById('exportDataButton').addEventListener('click', exportData);
         document.getElementById('exportRegistryButton').addEventListener('click', exportData);
         document.getElementById('registryLockButton').addEventListener('click', () => setRegistryEditMode(!registryEditMode));
@@ -5631,7 +5810,7 @@
         document.getElementById('saveCustomQuickCommandButton').addEventListener('click', saveCustomQuickCommand);
         document.getElementById('operatorsEasterEgg').addEventListener('click', registerOperatorTap);
         document.getElementById('reminderRecipientFilter').addEventListener('change', renderReminderRegistry);
-        document.getElementById('importDataButton').addEventListener('click', () => document.getElementById('importDataInput').click());
+        document.getElementById('importDataButton').addEventListener('click', () => window.VikiNative ? VikiNative.importBackup() : document.getElementById('importDataInput').click());
         document.getElementById('importDataInput').addEventListener('change', (e) => importDataFromFile(e.target.files[0]));
         document.getElementById('saveRulesButton').addEventListener('click', saveSortingRules);
         document.getElementById('resetRulesButton').addEventListener('click', resetSortingRules);

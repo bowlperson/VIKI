@@ -2,20 +2,91 @@
 
 VIKI (Virtual Inventory Keeper Intelligence) is a browser-based household inventory assistant for tracking nutritional assets, degradation timelines, locations, and quantities.
 
-## Run the app
+## Run the desktop HTML app
 
-Serve `Index.html` in a modern browser. VIKI stores inventory, presets, and favorite degradation rules in Supabase rather than browser local storage. Browser storage contains only device-specific preferences and the Supabase connection/session details required to reconnect.
+VIKI shares one HTML/JavaScript interface between the browser version and the Android APK. Inventory, presets, favorites, reminders, and cash profiles save locally by default: IndexedDB in the browser and SQLite in Android. No account, Supabase project, AI service, or Google service is needed for core operation. New installations start in **NO_LLM mode**; unknown items ask for shelf-life days locally.
 
-## Supabase setup
+From the repository root, run:
+
+```sh
+python3 -m http.server 8000 --bind 127.0.0.1
+```
+
+Open the locally served app in a modern browser. Keep the same hostname and port when returning: browser storage belongs to that origin. Only one writable tab per origin is allowed, preventing stale tabs from overwriting each other; close the first tab and reload the second to switch. The file is named `index.html` in lowercase. Serve over localhost or HTTPS for IndexedDB and the service worker; double-clicking a `file://` document is not the supported workflow.
+
+The service worker caches the app shell for offline browser use after the first successful load. Fonts use installed system fonts. Supporting browsers offer PWA installation; on iPhone/iPad use Safari's Share → **Add to Home Screen**. The APK bundles the same assets and does not need an initial website download.
+
+### Development checks
+
+Python 3 serves the app without an installation or build step. The test suite additionally uses Node.js and Playwright:
+
+```sh
+npm ci
+npx playwright install chromium
+npm test
+```
+
+`npm test` runs storage/planning tests and browser checks for local inventory, favorites, reminder creation, persistence, backups, notification duplicate suppression, and mocked optional Supabase transfers. `CHROMIUM_PATH` can select an installed Chromium executable instead of Playwright's downloaded browser. Browser tests do not establish Android or GrapheneOS behavior.
+
+## Android APK
+
+The native Java wrapper uses Android WebView, SQLite, AlarmManager, and notification channels. It has no Google Play Services, Firebase, advertising, or analytics dependency. It targets a Google-independent installation on devices such as a Pixel 7a running GrapheneOS; physical-device validation is still required.
+
+See [Android build and device checks](android/README.md) for toolchain, APK generation, signing, and device-test instructions. With Java 17 or newer and Android SDK 35 installed, run:
+
+```sh
+cd android
+./gradlew testDebugUnitTest assembleDebug
+```
+
+In the prepared cloud workspace, `npm run android:build` (or `bash scripts/android-build.sh`) selects the installed JDK/SDK and runs native tests, APK assembly, and lint. The helper also accepts individual Gradle task names.
+
+The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk` relative to the repository root. The Android build copies the root web assets, so browser and APK development use the same application source. Rebuild the APK to include web changes. A debug APK is for development; a distributable release requires your own signing key, retained securely for future updates.
+
+The initial APK does not request microphone access and does not provide browser voice recognition or background wake-word listening. Optional hosted integrations use HTTPS; cleartext local Ollama access is not supported by this APK.
+
+### Downloading the test APK
+
+The deployed website serves the development APK at `downloads/`, with its SHA-256 checksum and installation notes. The same files are committed in [downloads](downloads/) so the testing build is accessible from GitHub before deployment. This is a debug-signed build, not a production release.
+
+Pages publishes from `main`; merge this branch and let the existing Pages workflow finish to publish the web app and APK download together. `bash scripts/stage-site.sh` prepares the same public files locally, verifying the APK checksum and excluding source tooling and build caches. When updating the downloadable APK, replace `downloads/viki-debug.apk` and its checksum together.
+
+## Local data and backups
+
+Use **EXPORT** or **Settings → Export data** to save a versioned JSON backup. Browser and APK exports use the same format, retaining inventory, presets, favorite rules, reminders, cash profiles, and model preferences. Import validates the package before replacing those fields; export first if you need to retain the current registry. Android uses the system document picker, and the browser downloads/uploads a file. No broad file-access permission is required.
+
+Connection credentials and device notification permissions/history are not part of the portable backup. Reconfigure notification choices on each device. Clearing browser site data, clearing Android app data, uninstalling, or losing the device can remove the local database. Browser storage may also be evicted by the browser. Keep exported backups outside the app; optional cloud copies are another explicit backup path. Save failures are shown in the app rather than silently switching to temporary storage.
+
+## Supabase — optional cloud copy
+
+Supabase is disconnected by default. Existing Email authentication, Auth/PostgREST endpoints, the `viki_state` JSON state column, and owner-based Row Level Security remain supported. Local changes do not automatically upload, download, or merge with another device.
 
 1. Create a Supabase project and enable Email authentication.
-2. Run [`supabase-schema.sql`](supabase-schema.sql) once in the project's SQL editor. It creates the `viki_state` table, enables Row Level Security, and restricts each state row to its authenticated owner.
+2. Run [`supabase-schema.sql`](supabase-schema.sql) once in the project's SQL editor. It creates `viki_state`, enables Row Level Security, and restricts each row to its authenticated owner. Existing projects with that schema do not need a different storage table.
 3. Create an Email user in Supabase Authentication.
-4. Open **Settings → Supabase Database** and enter the project URL, browser-safe anon key, login email, and password, then select **CONNECT_AND_SYNC**.
+4. Open **Settings → Supabase — Optional Cloud Copy**, enter the project URL, browser-safe anon key, login email, and password, then select **CONNECT**. Connecting authenticates without replacing local data.
+5. Choose **UPLOAD_LOCAL_COPY** to replace the account's cloud registry, or **DOWNLOAD_CLOUD_COPY** to replace this device's registry. Both transfers require an explicit confirmation. Export a backup first if both copies matter.
 
-Never put the `service_role` key in VIKI. The settings form accepts the browser-safe anon key only. The password is sent directly to Supabase for sign-in and is not persisted; the resulting refresh session is stored in the browser. No npm dependency is required because this static application uses Supabase's documented Auth and PostgREST HTTP endpoints through the browser `fetch` API.
+There is no automatic conflict resolution: the selected whole-registry copy wins. Device notification settings/history stay on the device. Disconnecting preserves local inventory and reminders. Restarting the app does not automatically connect to Supabase; saved connection/session information is used only when explicitly connecting.
 
-For installation and offline use, serve the repository over HTTPS (or localhost). VIKI includes a text-only web app manifest and service worker. The browser or operating system supplies its default home-screen icon so the update contains no image assets. Supporting desktop and Android browsers expose **INSTALL** when installation is available. On iPhone or iPad, select **INSTALL** for guidance and use Safari’s Share → **Add to Home Screen**. Direct `file://` use cannot register a service worker.
+Never enter a `service_role` key. The password is used for sign-in and is not persisted; connection details and the resulting refresh session are retained in the app's browser storage. Credentials are excluded from exports. No Supabase SDK or npm runtime dependency is required: the app uses documented HTTPS Auth and PostgREST requests. Testing against mocked endpoints does not validate authorization or schema in your live project.
+
+## Local notifications and reminders
+
+Open **Settings → On-device Notifications** and enable alerts explicitly. Choose daily summaries, item milestones, and scheduled reminders independently, then select **SAVE_NOTIFICATIONS**.
+
+- Daily summaries use the device's local time and list items with three days or less remaining, including expired stock. Empty summaries are skipped. Keeping daily summaries enabled deliberately repeats that daily review.
+- Optional item milestones fire once per inventory batch/shelf-life revision at 30%, 15%, and expiration. Percentage warnings apply only when more than three days remain. Catch-up chooses the most recent crossed milestone rather than sending every old stage; delivery history prevents the same stage repeating hourly.
+- Scheduled reminders retain their Tucson/Phoenix time semantics and can repeat daily, weekly, or monthly. Local delivery does not depend on email delivery or Supabase.
+- **Seen** acknowledges a delivered occurrence; **Snooze** requests one follow-up the next day. Deleting an item/reminder cancels its pending schedule. Editing its shelf-life timeline can create a new set of milestones.
+
+Android persists schedules and delivery history in SQLite and schedules the next needed alarm instead of polling hourly. Grant notification permission to display alerts. **ALLOW_PRECISE_REMINDERS** opens Android's separate exact-alarm access setting; with that access the scheduler uses alarms allowed during Doze. Without it, scheduling is approximate and may be delayed. Android's own alarm limits still apply; exact-alarm access is not an unconditional delivery guarantee.
+
+The app restores schedules after reboot, app updates, and clock/timezone changes. Storage is credential-protected: reboot recovery occurs after the first unlock. Powering off, force-stopping the app, revoking permissions, or disabling notifications can prevent delivery. Open VIKI again after a force-stop. Test locked-screen and extended-idle delivery on the actual target phone before relying on important reminders.
+
+The APK declares `INTERNET` for optional integrations, `POST_NOTIFICATIONS` for visible alerts, `RECEIVE_BOOT_COMPLETED` to restore schedules, and `SCHEDULE_EXACT_ALARM` for optional precise delivery. It does not request Google account, contacts, SMS, location, microphone, broad storage, or unrestricted battery access.
+
+In the HTML version, reminder checks and notifications operate only while VIKI is open, and background tabs may be throttled. There is no browser closed-tab scheduling guarantee. Android's notification shade supplies native actions; browser notification history in Settings supplies Seen/Snooze controls.
 
 ## Date and time behavior
 
@@ -40,7 +111,7 @@ Sort options include expiration soonest, name, location, recently added, quantit
 
 ## AI configuration
 
-Enter a Venice API key in **Settings**, then select **Save AI settings**, or enable local Ollama mode. No API key is included in the source or data exports. The key is stored only in the current browser's `localStorage`. VIKI sends the current inventory snapshot and browser device timestamp to the configured service.
+AI is optional and disabled through **NO_LLM mode** by default. To opt in, disable NO_LLM mode, enter a Venice API key in **Settings**, then select **Save AI settings**. The desktop HTML version can also use local Ollama mode; the APK blocks its cleartext HTTP endpoint. No API key is included in the source or data exports. The key is stored only in the current browser's `localStorage`. VIKI sends the current inventory snapshot and browser device timestamp to the configured service.
 
 AI responses are required to be JSON objects with this shape:
 
@@ -68,7 +139,7 @@ If an action is rejected, VIKI displays an error and does not silently mutate un
 
 ## Conversation and sorting rules
 
-VIKI executes browser speech-recognition transcripts immediately, so voice capture does not require a separate confirmation control. Confirmations that are still appropriate for destructive or ambiguous operations happen in the conversation: reply with the requested value, `CONFIRM`, or `CANCEL`.
+Where browser speech recognition is available, VIKI executes its transcripts immediately, so voice capture does not require a separate confirmation control. Confirmations that are still appropriate for destructive or ambiguous operations happen in the conversation: reply with the requested value, `CONFIRM`, or `CANCEL`.
 
 To queue several additions, use one natural list, for example: `add milk, 2 bread, and eggs`. VIKI recognizes the commas and conjunction, recalls every item on its own line, and waits without changing the registry. Reply `CONFIRM` to add the entire list, `CANCEL` to add nothing, or send a complete revised comma-separated list to adjust names or quantities. VIKI repeats a revised list for confirmation and, after adding, repeats only the final item list.
 
@@ -116,11 +187,11 @@ Open **Settings** in the application header to edit the AI configuration, tag ma
 food name | tag one, tag two | category | fridge | 7
 ```
 
-The matching priority can prefer exact food names or tags. Preset names, tags, categories, locations, shelf lives, inventory, and favorite rules synchronize to the authenticated Supabase state. Device-only UI and service credentials remain in browser storage.
+The matching priority can prefer exact food names or tags. Preset names, tags, categories, locations, shelf lives, inventory, and favorite rules save in the local database. They are included in explicit optional Supabase copy transfers. Device-only UI preferences and service credentials remain in browser storage.
 
 ## Reminders
 
-Enter `Add Reminder` to create an email reminder without an LLM. VIKI collects the subject and optional notes verbatim, then asks for **Reminder 1** and **Reminder 2 in separate messages**. Reminder 1 is required. Reply `NONE` when asked for Reminder 2 to opt out. At the end of setup, VIKI asks whether the schedule should repeat; reply `Once`/`None`, `Daily`, `Weekly`, or `Monthly`. If both reminder times are supplied, Reminder 2 must be later than Reminder 1 and the same subject, body, and recipients are emailed at both times.
+Enter `Add Reminder` to create a local reminder without an LLM. Reply **LOCAL** at the recipient question to avoid email entirely, or enter optional email recipients. Enable scheduled reminders in On-device Notifications for local delivery. VIKI collects the subject and optional notes verbatim, then asks for **Reminder 1** and **Reminder 2 in separate messages**. Reminder 1 is required. Reply `NONE` when asked for Reminder 2 to opt out. At the end of setup, VIKI asks whether the schedule should repeat; reply `Once`/`None`, `Daily`, `Weekly`, or `Monthly`. If both reminder times are supplied, Reminder 2 must be later than Reminder 1 and both times produce local notifications when enabled; optional configured email delivery uses the same subject, body, and recipients.
 
 ```text
 VIKI: When should Reminder 1 send?
@@ -133,7 +204,7 @@ Common ISO, US numeric, month-name, `today`, `tomorrow`, and relative inputs suc
 
 Reminder scheduling uses Tucson, Arizona (`America/Phoenix`, UTC−07:00/MST year-round) regardless of the device's configured timezone. On the hosted app, VIKI periodically reads the same-origin HTTP `Date` response header as a server-clock reference and falls back to the device clock if the network is unavailable. Inputs such as `today @ 5:30pm` and confirmation corrections such as `set it to 5:30pm` therefore mean 5:30 PM Tucson time. Explicit offsets such as `Z`, `-04:00`, or `+01:00` remain absolute instants. Validation messages, registry fields, reports, and EmailJS reminder timestamps are all displayed in MST.
 
-Configure the independent **Reminder Emails [EmailJS]** section with Abel's and Anna's reference addresses plus a reminder-specific EmailJS service ID, template ID, and public key. A reminder can target Abel, Anna, both, or one or more custom addresses entered during creation. The reminder EmailJS template should use:
+For optional email delivery, configure the independent **Reminder Emails [EmailJS]** section with Abel's and Anna's reference addresses plus a reminder-specific EmailJS service ID, template ID, and public key. A reminder can target Abel, Anna, both, or one or more custom addresses entered during creation. The reminder EmailJS template should use:
 
 ```text
 To Email: {{to_email}}
@@ -145,6 +216,6 @@ Reminder 1 time: {{reminder_1_datetime}}
 Reminder 2 time: {{reminder_2_datetime}}
 ```
 
-Pending and sent reminders synchronize inside the authenticated Supabase state. Delivery checks run when VIKI loads and once per minute while the application remains open; GitHub Pages cannot execute scheduled browser JavaScript while every VIKI tab is closed. Enter `Reminders` or `List reminders` to review pending schedules.
+Pending and sent reminders save locally and are included in explicit optional Supabase transfers. EmailJS delivery checks run when VIKI loads and once per minute while it remains open; they are separate from native local notifications. Email is not guaranteed while the APK is closed, and GitHub Pages cannot execute scheduled browser JavaScript while every VIKI tab is closed. Enter `Reminders` or `List reminders` to review pending schedules.
 
 Select the **ASSET_REGISTRY** title to switch to **REMINDER_REG**. Reminder cards expose the subject, optional email body, recipients, required Reminder 1 time, optional Reminder 2 time, and Once/None, Daily, Weekly, or Monthly repeat setting for direct editing. Each card can be saved or deleted, and the registry can be filtered to all reminders or those addressed to the configured Abel or Anna email. Select the title again to return to assets. The shortened reminder title remains on one line beside the registry actions at default zoom, while the stacked mobile layout and installable PWA use the same controls.
