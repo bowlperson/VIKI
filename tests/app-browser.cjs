@@ -7,7 +7,7 @@ let chromium;
 try { ({chromium}=require('playwright')); }
 catch { ({chromium}=require('/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright')); }
 const root=path.resolve(__dirname,'..');
-const types={'.html':'text/html','.js':'text/javascript','.json':'application/json'};
+const types={'.html':'text/html','.js':'text/javascript','.json':'application/json','.css':'text/css'};
 const server=http.createServer((req,res)=>{
     const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
     const target=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));
@@ -17,7 +17,10 @@ const server=http.createServer((req,res)=>{
         res.writeHead(200,{'Content-Type':types[path.extname(target)]||'application/octet-stream'}).end(body);
     });
 });
+async function view(page,name){ await page.evaluate(name=>{if(window.VikiMobile) VikiMobile.selectView(name);else if(name==='settings')setSettingsOpen(true);else setSettingsOpen(false);},name); }
+async function settings(page,category){await view(page,'settings');await page.evaluate(category=>window.VikiMobile?.selectSettingsCategory(category),category);}
 async function command(page,text){
+    await view(page,'chat');
     await page.locator('#messageInput').fill(text);
     await page.locator('.send-btn').click();
     await page.waitForTimeout(50);
@@ -46,6 +49,7 @@ async function saved(page){await page.evaluate(()=>VikiStorage.flush());return p
         let state=await saved(page);
         assert.equal(state.inventory.length,1,'confirmed eggs should persist without account');
         assert.equal(state.inventory[0].name,'eggs');
+        await view(page,'assets');
         await page.locator('.favorite-button').first().click();
         state=await saved(page);assert.ok(state.favoriteRules.eggs,'favorite saves its rule locally');
         await page.reload({waitUntil:'networkidle'});
@@ -63,7 +67,7 @@ async function saved(page){await page.evaluate(()=>VikiStorage.flush());return p
         assert.equal(state.reminders.length,1,'local reminder conversation must not require email');
         assert.deepEqual(state.reminders[0].recipients,[]);
         assert.equal(state.reminders[0].subject,'Pick up medicine');
-        await page.locator('#openSettingsButton').click();
+        await settings(page,'storage');
         const downloadPromise=page.waitForEvent('download');
         await page.locator('#exportDataButton').click();
         const download=await downloadPromise;
@@ -108,7 +112,9 @@ async function saved(page){await page.evaluate(()=>VikiStorage.flush());return p
             if(url.pathname==='/rest/v1/viki_state' && req.method()==='GET')return route.fulfill({json:[{state:remoteOverride || uploaded.state}]});
             throw Error('Unexpected cloud request '+req.url());
         });
-        await page.locator('#openSettingsButton').click();
+        await settings(page,'storage');
+        await page.locator('.optional-cloud').evaluate(el=>el.open=true);
+        if(await page.locator('#storageMode').count())await page.locator('#storageMode').selectOption('supabase');
         await page.locator('#supabaseUrl').fill('https://test.supabase.co');
         await page.locator('#supabaseAnonKey').fill('browser-safe-test-key');
         await page.locator('#supabaseEmail').fill('operator@example.com');
@@ -131,7 +137,8 @@ async function saved(page){await page.evaluate(()=>VikiStorage.flush());return p
         await page.locator('#downloadSupabaseButton').click();
         await page.waitForFunction(()=>document.getElementById('supabaseStatus').textContent.includes('Invalid inventory'));
         assert.deepEqual(await saved(page),beforeInvalidDownload,'invalid remote state must not replace durable local data');
-        await page.locator('#disconnectSupabaseButton').click();
+        await page.locator('#storageMode').selectOption('local');
+        assert.ok(await page.locator('#connectSupabaseButton').isDisabled(),'on-device mode disables cloud transfers');
         assert.equal((await saved(page)).inventory.length,1);
         assert.equal(await page.evaluate(()=>localStorage.getItem('viki_supabase_session')),null);
         assert.deepEqual(errors,[],'no uncaught JavaScript errors');
@@ -144,18 +151,28 @@ async function saved(page){await page.evaluate(()=>VikiStorage.flush());return p
                 writeState:json=>{localStorage.setItem('test_native_db',json);return true;},
                 scheduleNotifications:json=>localStorage.setItem('test_native_schedule',json),
                 notificationStatus:()=>JSON.stringify({notifications:true,exactAlarms:true}),
-                requestNotificationPermission:()=>{},requestExactAlarmPermission:()=>{}
+                requestNotificationPermission:()=>{},requestExactAlarmPermission:()=>{},
+                setFullscreen:value=>localStorage.setItem('test_native_fullscreen',String(value)),
+                fullscreenStatus:()=>localStorage.getItem('test_native_fullscreen')!=='false',
+                showPermissionSetup:()=>localStorage.setItem('test_native_permissions_opened','true'),listNotificationHistory:()=>JSON.stringify([]),
+                markNotificationRead:()=>true
             };
         });
         const nativePage=await nativeContext.newPage();
         await nativePage.goto(origin,{waitUntil:'networkidle'});
         await nativePage.waitForFunction(()=>document.getElementById('localStorageStatus').textContent.includes('sqlite'));
+        if(await nativePage.evaluate(()=>!!window.VikiMobile)) {
+            await nativePage.waitForFunction(()=>document.body.classList.contains('mobile-ui-ready'));
+            assert.equal(await nativePage.evaluate(()=>localStorage.getItem('test_native_fullscreen')),'true','native app defaults to immersive fullscreen');
+        }
         await command(nativePage,'add eggs');await command(nativePage,'CONFIRM');
         assert.equal((await saved(nativePage)).inventory.length,1);
         await nativePage.reload({waitUntil:'networkidle'});
         await nativePage.waitForFunction(()=>document.getElementById('localStorageStatus').textContent.includes('sqlite'));
         assert.equal((await saved(nativePage)).inventory.length,1);
-        await nativePage.locator('#openSettingsButton').click();
+        await settings(nativePage,'alerts');
+        await nativePage.locator('#permissionSetupButton').click();
+        assert.equal(await nativePage.evaluate(()=>localStorage.getItem('test_native_permissions_opened')),'true','permission setup can be reopened on Android');
         await nativePage.locator('#localNotificationsEnabled').check();
         await nativePage.locator('#saveNotificationSettingsButton').click();
         await nativePage.waitForFunction(()=>JSON.parse(localStorage.getItem('test_native_schedule')).length>0);

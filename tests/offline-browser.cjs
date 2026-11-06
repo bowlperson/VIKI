@@ -7,7 +7,7 @@ let chromium;
 try { ({chromium} = require('playwright')); }
 catch { ({chromium} = require('/opt/codex/runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright')); }
 const root = path.resolve(__dirname, '..');
-const types = {'.html':'text/html', '.js':'text/javascript', '.json':'application/json'};
+const types = {'.html':'text/html', '.js':'text/javascript', '.json':'application/json', '.css':'text/css'};
 const secretMarker = 'private-test-api-data-never-cache';
 let remoteCalls = 0;
 const remote = http.createServer((request, response) => {
@@ -84,6 +84,7 @@ const close = target => new Promise(resolve => target.close(resolve));
         await page.setViewportSize({width:412, height:915});
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile Settings should fit Pixel-sized viewport');
         await page.locator('#closeSettingsButton').click();
+        await page.evaluate(()=>window.VikiMobile?.selectView('chat'));
         await page.locator('#messageInput').fill('add milk');
         await page.locator('.send-btn').click();
         await page.locator('#messageInput').fill('CONFIRM');

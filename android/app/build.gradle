@@ -8,8 +8,8 @@ android {
         applicationId 'dev.viki.app'
         minSdk 26
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0'
+        versionCode 3
+        versionName '0.3.0'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes { release { minifyEnabled false } }
@@ -18,7 +18,7 @@ android {
 
 tasks.register('bundleWebAssets', Sync) {
     from(rootProject.projectDir.parentFile) {
-        include 'index.html', 'viki-personality.js', 'viki-storage.js', 'viki-notifications.js', 'manifest.json', 'assets/**'
+        include 'index.html', 'viki-personality.js', 'viki-storage.js', 'viki-notifications.js', 'manifest.json', 'mobile-ui.js', 'mobile-ui.css', 'viki-inbox.js', 'viki-help.js', 'viki-data.js', 'assets/**'
     }
     into layout.buildDirectory.dir('generated/web-assets')
 }

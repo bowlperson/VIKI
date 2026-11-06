@@ -1,0 +1,162 @@
+/* Shared phone-first surface. Native Android applies physical system-bar insets. */
+:root{--app-font:system-ui,-apple-system,sans-serif;--app-scale:1;--app-height:100dvh;--nav-height:76px;--panel:color-mix(in srgb,var(--terminal-fg) 4%,var(--terminal-bg));--panel-raised:color-mix(in srgb,var(--terminal-fg) 7%,var(--terminal-bg));--muted:color-mix(in srgb,var(--terminal-fg) 65%,var(--terminal-bg))}
+html:has(body.viki-modern){font-size:calc(16px * var(--app-scale));color-scheme:dark}
+body.viki-modern{font-family:var(--app-font);height:var(--app-height);min-height:0;max-width:960px;margin:0 auto;background:var(--terminal-bg);padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);overflow:hidden;position:relative}
+body.viki-modern::before{display:none}
+.viki-modern [hidden]{display:none!important}
+.viki-modern button,.viki-modern input,.viki-modern select,.viki-modern textarea{font-family:var(--app-font);font-size:1rem}
+.viki-modern button,.viki-modern .filter-tab{min-height:46px;touch-action:manipulation}
+.viki-modern input:not([type=checkbox]):not([type=range]):not([type=color]),.viki-modern select,.viki-modern textarea{min-height:48px;border-radius:12px;background:var(--terminal-bg);border:1px solid var(--border-color);color:var(--terminal-fg);padding:12px;max-width:100%;font-size:1rem}
+.viki-modern input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent-cyan);flex:0 0 auto}
+.viki-modern input[type=range]{width:100%;accent-color:var(--accent-cyan)}
+.viki-modern button:focus-visible,.viki-modern input:focus-visible,.viki-modern select:focus-visible,.viki-modern textarea:focus-visible,.viki-modern .filter-tab:focus-visible{outline:2px solid var(--accent-cyan);outline-offset:3px}
+.viki-modern .header{background:var(--terminal-bg);border-bottom:1px solid var(--border-color);padding:14px 20px 12px;min-height:76px;gap:8px;justify-content:space-between;flex:0 0 auto}
+.viki-modern .header-left{justify-content:flex-start;display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:auto;min-width:0}
+.viki-modern .logo{position:static;padding:0;letter-spacing:.18em;font-size:1.2rem;min-height:28px;color:var(--accent-cyan);cursor:pointer}
+.viki-modern .logo::before,.viki-modern .logo::after,.viki-modern .subtitle{display:none}
+.mobile-header-caption{font-size:.7rem;color:var(--muted);letter-spacing:.03em}
+.viki-modern .system-status{position:static;display:flex;align-items:center;flex:0 0 auto}
+.viki-modern .system-status .status-item{display:none}
+.viki-modern .header-button{border:1px solid var(--border-color);color:var(--terminal-fg);background:var(--panel-raised);font-size:.8rem;border-radius:12px;padding:10px 14px;min-height:46px}
+.viki-modern .container{display:flex;flex:1 1 auto;min-height:0;overflow:hidden;flex-direction:column;margin-bottom:calc(var(--nav-height) + env(safe-area-inset-bottom))}
+.viki-modern .main-content,.viki-modern .sidebar{background:var(--terminal-bg);width:100%;max-width:none;min-height:0;border:0;flex:1 1 auto}
+.viki-modern .main-content{display:flex!important;overflow:hidden}
+.viki-modern .sidebar{display:none!important;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:0 16px 24px;scroll-padding-top:76px}
+.viki-modern[data-viki-view=assets] .sidebar,.viki-modern[data-viki-view=reminders] .sidebar{display:flex!important}
+.viki-modern[data-viki-view=assets] .main-content,.viki-modern[data-viki-view=reminders] .main-content{display:none!important}
+.viki-modern[data-viki-view=settings] .container{visibility:hidden}
+.viki-modern .sidebar-header{position:sticky;top:0;z-index:5;background:var(--terminal-bg);padding:16px 0 12px;border:0;gap:10px;flex-wrap:wrap}
+.viki-modern .registry-title-button{font-size:1.15rem;color:var(--terminal-fg);font-weight:650;letter-spacing:-.025em;min-height:46px;white-space:normal}
+.viki-modern .sidebar-title::before,.viki-modern .sidebar-title::after{display:none}
+.viki-modern .registry-actions{gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
+.viki-modern .item-count{color:var(--muted);font-size:.75rem}
+.viki-modern .registry-actions .config-button{padding:8px 11px;font-size:.75rem}
+.viki-modern .location-chips{padding:0 0 12px;display:flex;gap:8px;flex:0 0 auto;overflow:auto;scrollbar-width:none}
+.viki-modern[data-viki-view=reminders] .location-chips{display:none}
+.viki-modern .filter-tab{display:flex;align-items:center;justify-content:center;border-radius:99px;border:1px solid var(--border-color);color:var(--muted);padding:0 16px;font-size:.85rem;flex:0 0 auto;cursor:pointer;background:var(--panel)}
+.viki-modern .filter-tab.active{color:var(--terminal-bg);background:var(--accent-cyan);border-color:var(--accent-cyan);font-weight:650}
+.viki-modern .collapsible-heading{background:transparent;border:1px solid var(--border-color);border-radius:12px;margin-bottom:14px;padding:12px;color:var(--muted);font-size:.85rem;flex:0 0 auto}
+.viki-modern .filter-content{overflow:visible;flex:0 0 auto;padding:0}
+.viki-modern .inventory-controls{padding:0 0 16px;gap:10px}
+.viki-modern .inventory-controls-row{gap:10px;min-width:0}
+.viki-modern .inventory-control{min-width:0;width:100%;font-size:.85rem!important}
+.viki-modern .inventory-list{overflow:visible;flex:0 0 auto;max-height:none;padding:0;min-height:0}
+.viki-modern .inventory-item{border:1px solid var(--border-color);border-radius:18px;background:var(--panel);margin-bottom:12px;padding:16px;box-shadow:none}
+.viki-modern .item-header{gap:10px;align-items:flex-start;flex-wrap:wrap}
+.viki-modern .item-identity{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-width:0;flex:1}
+.viki-modern .item-name{font-size:1rem;line-height:1.35;letter-spacing:0;font-weight:650;text-transform:none;overflow-wrap:anywhere}
+.viki-modern .item-location{font-size:.65rem;letter-spacing:.06em;border-radius:6px;padding:5px 7px}
+.viki-modern .item-qty{font-size:.85rem;min-height:44px;display:flex;align-items:center;color:var(--terminal-fg)}
+.viki-modern .favorite-button{min-height:44px;min-width:44px;border-radius:50%;font-size:1.3rem;text-shadow:none;margin-left:auto}
+.viki-modern .item-meta{font-size:.72rem;line-height:1.6;color:var(--muted);margin:8px 0;overflow-wrap:anywhere}
+.viki-modern .item-timer{font-size:.7rem;line-height:1.6;border-radius:10px;padding:10px;min-height:44px;overflow-wrap:anywhere;letter-spacing:0}
+.viki-modern .terminal-output{padding:20px 16px 8px;font-size:.95rem;line-height:1.6;scroll-padding-bottom:20px;overflow-x:hidden}
+.viki-modern .message{border:1px solid var(--border-color);border-radius:16px;margin-bottom:12px;padding:14px 16px;background:var(--panel);overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.6}
+.viki-modern .message::before{display:block;font-size:.65rem;font-weight:700;letter-spacing:.12em;margin-bottom:7px;color:var(--accent-cyan);content:'VIKI'}
+.viki-modern .message.user{margin-left:24px;color:var(--terminal-fg);background:color-mix(in srgb,var(--accent-cyan) 9%,var(--terminal-bg));border-color:color-mix(in srgb,var(--accent-cyan) 22%,transparent)}
+.viki-modern .message.user::before{content:'YOU';color:var(--muted)}
+.viki-modern .message.system{color:var(--muted);font-size:.8rem}
+.viki-modern .message.error{color:var(--accent-red);border-color:var(--accent-red)}
+.viki-modern .message.error::before{content:'CHECK THIS';color:var(--accent-red)}
+.viki-modern .input-area{background:var(--terminal-bg);border-top:1px solid var(--border-color);padding:12px 16px;flex:0 0 auto}
+.viki-modern .quick-commands{gap:8px;display:flex;flex-wrap:nowrap;overflow:auto;scrollbar-width:none;padding:0 0 10px}
+.viki-modern .quick-cmd{border:1px solid var(--border-color);border-radius:99px;background:var(--panel);color:var(--muted);font-size:.75rem;padding:0 14px;min-height:40px;flex:0 0 auto}
+.viki-modern .input-line{display:flex;flex-wrap:nowrap;gap:8px;align-items:center}
+.viki-modern .input-prompt{display:none}
+.viki-modern #messageInput{min-width:0;flex:1 1 0;min-height:50px;border-radius:16px;font-size:.9rem}
+.viki-modern .send-btn{flex:0 0 auto;min-height:50px;border:0;border-radius:14px;background:var(--accent-cyan);color:var(--terminal-bg);padding:0 17px;font-size:.85rem;font-weight:700}
+.viki-modern .mic-btn{flex:0 0 auto;min-height:48px;border-radius:12px;padding:0 10px;font-size:.7rem}
+.viki-modern .mute-btn{min-height:44px;border-radius:10px;font-size:.7rem}
+.viki-modern .voice-status{font-size:.65rem;color:var(--muted);margin-top:8px}
+.mobile-navigation{position:absolute;inset:auto 0 0;z-index:1100;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--terminal-bg);border-top:1px solid var(--border-color);padding:6px 12px calc(6px + env(safe-area-inset-bottom));height:calc(var(--nav-height) + env(safe-area-inset-bottom));gap:4px}
+.mobile-nav-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;color:var(--muted);font-size:.67rem!important;min-width:0;min-height:60px;background:transparent;border-radius:14px;cursor:pointer}
+.mobile-nav-icon{font-family:system-ui,sans-serif;font-size:1.4rem;line-height:1.1}
+.mobile-nav-button[aria-current=page]{color:var(--accent-cyan);background:color-mix(in srgb,var(--accent-cyan) 9%,transparent)}
+.viki-modern .settings-page{inset:0 0 calc(var(--nav-height) + env(safe-area-inset-bottom));background:var(--terminal-bg);padding:env(safe-area-inset-top) 16px 24px;overflow-y:auto;overflow-x:hidden;scroll-padding-top:164px;z-index:1050}
+.viki-modern .settings-shell{max-width:720px;margin:0 auto}
+.viki-modern .settings-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;padding:18px 0 14px;position:relative;background:var(--terminal-bg)}
+.viki-modern .settings-heading{font-size:1.5rem;letter-spacing:-.04em;color:var(--terminal-fg);line-height:1.25}
+.viki-modern .settings-subtitle{font-size:.8rem;line-height:1.5;color:var(--muted);margin-top:3px}
+.viki-modern .settings-header .header-button{width:auto;flex:0 0 auto;min-width:76px}
+.settings-controls{position:sticky;top:0;background:var(--terminal-bg);padding:0 0 14px;z-index:10}
+.viki-modern .settings-search{display:block;width:100%;background:var(--panel)!important;font-size:.9rem!important}
+.settings-categories{display:flex;gap:6px;overflow:auto;scrollbar-width:none;padding-top:12px}
+.settings-category{border:1px solid transparent;background:transparent;color:var(--muted);padding:8px 12px;border-radius:99px;font-size:.8rem!important;flex:0 0 auto;cursor:pointer}
+.settings-category[aria-pressed=true]{color:var(--terminal-bg);background:var(--accent-cyan);font-weight:650}
+.viki-modern .settings-grid{display:block;padding:0;border:0;background:transparent}
+.settings-group{display:grid;grid-template-columns:1fr;gap:14px}
+.viki-modern .settings-section{padding:18px 16px;border:1px solid var(--border-color);border-radius:18px;background:var(--panel);margin:0;min-width:0}
+.viki-modern .config-title{color:var(--terminal-fg);font-size:1rem;line-height:1.4;letter-spacing:-.02em;margin-bottom:14px;font-weight:650}
+.viki-modern .config-row{display:grid;gap:7px;margin-top:14px}
+.viki-modern .config-label,.viki-modern .toggle-label{font-size:.8rem;color:var(--muted);line-height:1.5;letter-spacing:0;overflow-wrap:anywhere}
+.viki-modern .config-help{font-size:.78rem;color:var(--muted);line-height:1.6;margin:8px 0;overflow-wrap:anywhere}
+.viki-modern .config-actions{grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr));gap:10px;margin-top:16px}
+.viki-modern .config-button{border:1px solid var(--border-color);border-radius:12px;background:var(--panel-raised);color:var(--accent-cyan);padding:11px 12px;font-size:.75rem;line-height:1.5;overflow-wrap:anywhere;cursor:pointer}
+.viki-modern .config-button:hover{border-color:var(--accent-cyan);color:var(--accent-cyan)}
+.viki-modern .toggle-row{gap:12px;margin-top:16px;min-height:44px}
+.viki-modern .config-textarea{min-height:110px;max-height:380px;line-height:1.6;font-size:.85rem!important}
+.viki-modern .logic-note{background:var(--terminal-bg);border-radius:0 12px 12px 0;font-size:.8rem;padding:12px}
+.viki-modern .settings-empty{padding:24px 8px;color:var(--muted);font-size:.9rem}
+.appearance-field{display:grid;gap:8px;margin:18px 0;position:relative}
+.theme-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.theme-option{display:flex;align-items:center;gap:9px;min-width:0;text-align:left;border:1px solid var(--border-color);border-radius:12px;padding:12px;color:var(--terminal-fg);background:var(--terminal-bg);font-size:.8rem!important;cursor:pointer}
+.theme-option[aria-pressed=true]{border-color:var(--accent-cyan);box-shadow:0 0 0 1px var(--accent-cyan)}
+.theme-swatch{width:16px;height:16px;flex:0 0 auto;border-radius:50%;box-shadow:0 0 12px currentColor}
+.custom-colors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.custom-colors .appearance-field{margin:4px 0 14px}
+.viki-modern input[type=color]{width:100%;height:46px;padding:4px;border:1px solid var(--border-color);background:var(--terminal-bg);border-radius:10px}
+.appearance-size-value{position:absolute;right:0;top:0;font-size:.8rem;color:var(--accent-cyan)}
+.appearance-toggle{display:flex;align-items:flex-start;gap:12px;margin:18px 0;min-height:48px;font-size:.85rem;line-height:1.5;cursor:pointer}
+.appearance-toggle>span{display:grid;gap:4px}.appearance-toggle small{font-size:.75rem;color:var(--muted)}
+.appearance-preview{border:1px solid var(--border-color);background:var(--terminal-bg);border-radius:14px;padding:16px;display:grid;gap:8px;margin:18px 0 0}
+.appearance-preview small{color:var(--accent-cyan);font-size:.65rem;letter-spacing:.12em}.appearance-preview strong{font-size:1rem;font-weight:600}.appearance-preview>span{color:var(--muted);font-size:.8rem}
+.viki-modern .reminder-card{gap:12px}.viki-modern .reminder-card-grid{grid-template-columns:1fr;gap:12px}.viki-modern .registry-field{border-radius:10px;min-width:0}.viki-modern .registry-edit-field{font-size:.75rem;color:var(--muted);gap:6px}.viki-modern .reminder-status{font-size:.7rem;line-height:1.5;color:var(--accent-amber)}.viki-modern .reminder-card-actions{gap:10px}.viki-modern .reminder-card-actions>*{flex:1}
+.viki-inbox{margin-top:20px;padding-top:12px;border-top:1px solid var(--border-color);flex:0 0 auto}.viki-inbox h2{font-size:1rem;margin:8px 0 14px}.viki-inbox-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.viki-inbox-toolbar select{flex:1;min-width:120px}.viki-inbox-card{border:1px solid var(--border-color);background:var(--panel);border-radius:16px;padding:16px;margin-bottom:12px;overflow-wrap:anywhere}.viki-inbox-card.is-unread{border-left:3px solid var(--accent-cyan)}.viki-inbox-card h3{font-size:.95rem;margin-bottom:8px}.viki-inbox-meta{font-size:.7rem;line-height:1.5;color:var(--muted);margin:8px 0}.viki-inbox-message{font-size:.85rem;line-height:1.6}.viki-inbox-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.viki-inbox-actions>*{flex:1;font-size:.7rem!important}.viki-inbox-card.is-read{background:var(--terminal-bg)}
+.viki-modern .alert-banner{position:static;padding:8px 16px;max-height:74px;overflow:auto;font-size:.7rem;line-height:1.5;flex:0 0 auto}
+.viki-modern .typing-indicator{padding:8px 16px;font-size:.75rem}
+.viki-modern .empty-state{padding:48px 16px;color:var(--muted);font-size:.9rem;line-height:1.6}.viki-modern .empty-state-icon{color:var(--accent-cyan);font-size:2rem;margin-bottom:12px}
+.viki-modern .slot-drawer{inset:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);padding:16px;z-index:1200}.viki-modern .slot-close{min-width:48px;min-height:48px}.viki-modern .slot-machine{max-width:100%;width:100%;border-radius:20px}.viki-modern .game-2048{border-radius:20px}
+.viki-modern.reduced-motion *,.viki-modern.reduced-motion *::before,.viki-modern.reduced-motion *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+@media(prefers-reduced-motion:reduce){.viki-modern *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media(min-width:700px){.viki-modern .terminal-output{padding:28px 36px 12px}.viki-modern .input-area{padding:16px 36px}.viki-modern .sidebar{padding:0 28px 24px}.viki-modern .inventory-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.viki-modern .inventory-item{margin:0}.viki-modern .settings-page{padding-left:28px;padding-right:28px}}
+@media(max-width:359px){.viki-modern .header{padding:10px 14px}.viki-modern .input-area{padding:10px}.viki-modern .mic-btn{display:none}.viki-modern .theme-options{grid-template-columns:1fr}.viki-modern .settings-page{padding-left:10px;padding-right:10px}.mobile-nav-button{font-size:.6rem!important}}
+.keyboard-open .mobile-navigation{display:none}.viki-modern.keyboard-open .container{margin-bottom:0}.viki-modern.keyboard-open .settings-page{bottom:0}
+
+/* Settings navigation stays reachable while long sections scroll underneath. */
+.settings-topbar{position:sticky;top:0;z-index:20;background:var(--terminal-bg);border-bottom:1px solid var(--border-color);margin-bottom:14px}
+.settings-topbar .settings-header,.settings-topbar .settings-controls{position:static}
+.viki-modern .message{font-style:normal}
+.viki-modern .command-guide{white-space:normal;font-style:normal;color:var(--terminal-fg)}
+.command-guide h2{font-size:1.05rem;line-height:1.4;margin:0 0 10px;letter-spacing:-.02em}
+.command-guide>p{font-size:.8rem;color:var(--muted);margin-bottom:14px}
+.command-guide-row{padding:8px 0;border-top:1px solid var(--border-color)}
+.viki-modern .command-example{padding:10px 12px;min-height:44px;border:1px solid var(--border-color);border-radius:10px;color:var(--accent-cyan);background:var(--terminal-bg);font-size:.78rem;text-align:left;max-width:100%;white-space:normal;font-style:normal}
+.command-guide-row p{font-size:.72rem;line-height:1.5;color:var(--muted);margin-top:6px}
+.command-guide summary{min-height:44px;padding:12px 0;color:var(--accent-cyan);font-size:.8rem;cursor:pointer}
+.viki-modern #messageInput{border:1px solid var(--border-color);background:var(--panel);padding:12px;font-family:var(--app-font)}
+.mobile-nav-icon svg{display:block}
+.storage-subheading{font-size:1rem;margin:20px 0 12px;color:var(--terminal-fg)}
+.storage-metrics{margin:0;display:grid;gap:5px;max-width:100%}.storage-metrics dt{font-size:.72rem;color:var(--muted);margin-top:12px}.storage-metrics dd{font-size:.8rem;line-height:1.6;margin:0;color:var(--terminal-fg);overflow-wrap:anywhere}
+@media(max-height:500px){.settings-topbar .settings-subtitle{display:none}.settings-topbar .settings-header{padding-top:8px;padding-bottom:8px}.settings-topbar .settings-controls{padding-bottom:8px}.settings-categories{padding-top:6px}}
+
+.optional-cloud>summary{color:var(--accent-cyan);min-height:48px;padding:12px 0;font-size:.85rem;cursor:pointer}
+.viki-modern .settings-group[data-category=storage]>.settings-section:first-child .config-actions{margin-top:0}
+
+/* Location meaning is shared by filters, tags and card borders. */
+.viki-modern [data-filter=fridge],.viki-modern .loc-fridge{--location-color:var(--fridge)}
+.viki-modern [data-filter=freezer],.viki-modern .loc-freezer{--location-color:var(--freezer)}
+.viki-modern [data-filter=cupboard],.viki-modern .loc-cupboard{--location-color:var(--cupboard)}
+.viki-modern .filter-tab[data-filter]:not([data-filter=all]),.viki-modern .item-location{color:var(--location-color);border:1px solid color-mix(in srgb,var(--location-color) 55%,transparent);background:color-mix(in srgb,var(--location-color) 10%,var(--terminal-bg))}
+.viki-modern .filter-tab.active[data-filter]:not([data-filter=all]){background:var(--location-color);color:var(--terminal-bg);border-color:var(--location-color)}
+.viki-modern .inventory-item.location-fridge{border-left:3px solid var(--fridge)}
+.viki-modern .inventory-item.location-freezer{border-left:3px solid var(--freezer)}
+.viki-modern .inventory-item.location-cupboard{border-left:3px solid var(--cupboard)}
+.mobile-header-caption,.appearance-preview small,.command-guide summary{color:var(--secondary-accent)}
+.mobile-nav-button[aria-current=page] .mobile-nav-icon{color:var(--secondary-accent)}
+.viki-modern .message{font-size:calc(16px * var(--chat-scale,1))}
+.viki-modern .message p,.viki-modern .message.system,.viki-modern .command-guide{font-size:calc(16px * var(--chat-scale,1))}
+.viki-modern .message .command-guide-row p,.viki-modern .command-guide>p{font-size:.82em}
+.viki-modern .message .command-example{font-size:.85em}
+.viki-modern .message h2{font-size:1.1em}
+.palette-controls{margin:20px 0;padding-top:16px;border-top:1px solid var(--border-color)}
+.palette-controls h3{font-size:1rem}.palette-controls .appearance-field{margin:12px 0}

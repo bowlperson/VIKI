@@ -57,7 +57,7 @@ final class NotificationScheduler {
                 if(!db.wasPosted(id,at)) {
                     String body="digest".equals(event.optString("kind"))?digest(db,event,now):event.getString("body");
                     if(!body.isEmpty()) {
-                        Intent launch=new Intent(c,MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                        Intent launch=new Intent(c,MainActivity.class).putExtra("notificationEventId",id).putExtra("notificationOccurrence",at).setData(android.net.Uri.parse("viki://open/"+android.net.Uri.encode(id)+"/"+at)).setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
                         PendingIntent open=PendingIntent.getActivity(c,0,launch,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
                         Notification notification=new Notification.Builder(c,CHANNEL)
                             .setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle(event.getString("title"))
@@ -67,7 +67,7 @@ final class NotificationScheduler {
                             .addAction(new Notification.Action.Builder(null,"Snooze 1 day",action(c,event,"snooze")).build()).build();
                         manager.notify(id,0,notification);
                     }
-                    db.mark(id,at,body.isEmpty()?"empty":"posted");
+                    db.recordDelivery(event,body,now);
                 }
                 db.completed(event,now);
             }
