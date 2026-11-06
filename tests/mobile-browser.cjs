@@ -85,6 +85,27 @@ async function touchable(locator,label){
    await page.evaluate(()=>VikiMobile.selectView('settings'));
    await touchable(page.locator('#closeSettingsButton'),'Settings back');
    await page.screenshot({path:`/tmp/viki-mobile-${viewport.width}-settings.png`});
+   await page.evaluate(()=>VikiMobile.selectSettingsCategory('appearance'));
+   for(const theme of ['mint','violet','amber']){
+    await page.locator(`.theme-option[data-theme="${theme}"]`).click();
+    const palette=await page.evaluate(()=>['fridge','freezer','cupboard'].map(key=>getComputedStyle(document.documentElement).getPropertyValue('--'+key).trim()));
+    assert.equal(new Set(palette).size,3,'theme preserves three distinct location colors');
+   }
+   await page.locator('#palette-fridge').evaluate(el=>{el.value='#ff88cc';el.dispatchEvent(new Event('input'));});
+   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--fridge')),'#ff88cc');
+   await page.locator('#monoAccent').check();
+   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--secondary-accent')),await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent-cyan')));
+   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--fridge')),'#ff88cc','mono does not erase location choices');
+   await page.locator('#appearanceScale').evaluate(el=>{el.value='.7';el.dispatchEvent(new Event('input'));});
+   await page.locator('#chatScale').evaluate(el=>{el.value='1.4';el.dispatchEvent(new Event('input'));});
+   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--app-scale')),'0.7');
+   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--chat-scale')),'1.4');
+   await page.evaluate(async()=>{
+    cashProfiles=[{id:'quiet-game',name:'Quiet test',balance:10000}];databaseState.cashProfiles=cashProfiles;localStorage.setItem(CASH_PROFILE_KEY,'quiet-game');
+    const before=document.getElementById('chatArea').childElementCount;
+    start2048Game();end2048Game();await earnCashForRegistryAddition();await handleLocalCommand('xoxo reset');
+    if(document.getElementById('chatArea').childElementCount!==before)throw Error('Games or earnings leaked into chat');
+   });
    for(const category of ['storage','alerts','assistant','advanced','appearance']){
     const tab=page.locator(`.settings-category[data-category="${category}"]`);
     await touchable(tab,`${category} category`);await tab.click();

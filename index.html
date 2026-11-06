@@ -2133,7 +2133,6 @@
             document.getElementById('slotWinnings').textContent = winnings ? `${jackpot ? 'JACKPOT · ' : 'WINNINGS '}${formatCash(winnings)}` : 'WINNINGS $0';
             const spinCost = free ? 'daily free spin' : `${formatCash(bet)} wager`;
             const reelSummary = results.map(formatCash).join(' / ');
-            addMessage(`SLOT RESULT: ${reelSummary} · ${spinCost} at ×${multiplier} · ${guaranteedJackpot ? 'LUCK MAXED · ' : ''}${jackpot ? 'JACKPOT · ' : ''}${winnings ? `${formatCash(winnings)} won` : 'no winnings'}.`, 'assistant');
         }
 
         // --- 2048 CASH GAME ---
@@ -2281,7 +2280,6 @@
             spawn2048Tile(profile.game2048.board); spawn2048Tile(profile.game2048.board);
             databaseState.cashProfiles = cashProfiles;
             setMoneyIndicator(profile.balance); queueLocalSave(); render2048();
-            addMessage(`2048 GAME: ${entryCost ? `${formatCash(entryCost)} wager placed` : 'free entry activated'}.`, 'assistant');
         }
 
         function end2048Game() {
@@ -2292,7 +2290,6 @@
             profile.game2048 = { board: Array(16).fill(0), score: 0, active: false, claimed: [], totalPrizes: 0 };
             game2048Animation = null;
             databaseState.cashProfiles = cashProfiles; queueLocalSave(); render2048();
-            addMessage('2048 game ended and board reset. High score preserved.', 'assistant');
         }
 
         function toggle2048PrizeTable() {
@@ -2357,7 +2354,6 @@
                 profile.balance += bonus1024;
                 setMoneyIndicator(profile.balance);
                 showCashReward(bonus1024);
-                addMessage(`2048 RGB BONUS: ${formatCash(bonus1024)} awarded for creating ${bonus1024 > 1000 ? `${bonus1024 / 1000} × ` : ''}1024.`, 'assistant');
             }
             const newlyWon = GAME_2048_PRIZES.filter(tier => game.score >= tier.score && !game.claimed.includes(tier.score));
             if (newlyWon.length) {
@@ -2365,7 +2361,6 @@
                 newlyWon.forEach(tier => game.claimed.push(tier.score));
                 game.totalPrizes += prize; profile.balance += prize;
                 setMoneyIndicator(profile.balance); showCashReward(prize);
-                addMessage(`2048 PRIZE: ${formatCash(prize)} awarded at score ${game.score.toLocaleString('en-US')}.`, 'assistant');
             }
             databaseState.cashProfiles = cashProfiles; queueLocalSave(); render2048();
             return true;
@@ -5121,32 +5116,34 @@
             return { message: response, responseRole: 'powered' };
         }
 
+        function cashGameFeedback(message) { document.getElementById('cashProfileStatus').textContent = message; return {type:'pending'}; }
+
         async function handleLocalCommand(text) {
             const lower = text.toLowerCase();
             if (/^(?:help|commands|list commands|show commands)[.!?]*$/i.test(text.trim())) { VikiHelp.showGuide(); return {type: 'pending'}; }
 
             if (/^xoxo\s+reset$/i.test(text.trim())) {
                 const profile = getActiveCashProfile();
-                if (!profile) return { message: 'Create and save a local cash profile in Settings before using this command.', responseRole: 'error' };
+                if (!profile) return cashGameFeedback('Create and save a local cash profile in Settings before using this command.');
                 delete profile.lastFreeSpinDate;
                 databaseState.cashProfiles = cashProfiles;
                 queueLocalSave();
                 updateSlotMachine();
-                return { message: `Daily free spin restored for ${profile.name}.` };
+                return cashGameFeedback(`Daily free spin restored for ${profile.name}.`);
             }
 
             const developerCashCommand = text.trim().match(/^xoxo\s+sept\s*=\s*\$?([\d,]+(?:\.\d{1,2})?)$/i);
             if (developerCashCommand) {
                 const profile = getActiveCashProfile();
-                if (!profile) return { message: 'Create and save a local cash profile in Settings before using this command.', responseRole: 'error' };
+                if (!profile) return cashGameFeedback('Create and save a local cash profile in Settings before using this command.');
                 const amount = Number(developerCashCommand[1].replace(/,/g, ''));
-                if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000) return { message: 'Developer cash amount must be greater than $0 and no more than $1,000,000,000.', responseRole: 'error' };
+                if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000) return cashGameFeedback('Developer cash amount must be greater than $0 and no more than $1,000,000,000.');
                 profile.balance = Math.round((Number(profile.balance) + amount) * 100) / 100;
                 databaseState.cashProfiles = cashProfiles;
                 setMoneyIndicator(profile.balance);
                 queueLocalSave();
                 showCashReward(amount);
-                return { message: `Developer cash allocation complete: +${formatCash(amount)}. ${profile.name} balance: ${formatCash(profile.balance)}.` };
+                return cashGameFeedback(`Developer cash allocation complete: +${formatCash(amount)}. ${profile.name} balance: ${formatCash(profile.balance)}.`);
             }
 
             // Device time is authoritative and does not require a network or AI call.

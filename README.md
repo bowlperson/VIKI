@@ -2,6 +2,10 @@
 
 VIKI (Virtual Inventory Keeper Intelligence) is a browser-based household inventory assistant for tracking nutritional assets, degradation timelines, locations, and quantities.
 
+## Theme refinements (0.3.0)
+
+Location filters and tags share theme-specific Fridge, Freezer, and Cupboard colors. Appearance lets you override each location, the main accent, and a separate secondary accent per theme; reset restores that theme's defaults. Mono changes accent effects to the main color while retaining location meaning. General text scales from 65–160%; VIKI chat has its own independent 65–180% slider. Cash and game results stay in their own interface and no longer post to VIKI chat.
+
 ## Mobile interface (0.2.0)
 
 [Mobile Settings preview](docs/mobile-settings.png)

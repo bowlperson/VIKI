@@ -1,4 +1,4 @@
-const CACHE_NAME = 'viki-mobile-v3';
+const CACHE_NAME = 'viki-themes-v4';
 const APP_SHELL = ['./', './index.html', './viki-personality.js', './viki-storage.js', './viki-notifications.js', './manifest.json', './mobile-ui.css', './mobile-ui.js', './viki-inbox.js', './viki-help.js', './viki-data.js'];
 const SHELL_URLS = new Set(APP_SHELL.map(path => new URL(path, self.location.href).href));
 

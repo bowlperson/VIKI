@@ -141,3 +141,22 @@ body.viki-modern::before{display:none}
 
 .optional-cloud>summary{color:var(--accent-cyan);min-height:48px;padding:12px 0;font-size:.85rem;cursor:pointer}
 .viki-modern .settings-group[data-category=storage]>.settings-section:first-child .config-actions{margin-top:0}
+
+/* Location meaning is shared by filters, tags and card borders. */
+.viki-modern [data-filter=fridge],.viki-modern .loc-fridge{--location-color:var(--fridge)}
+.viki-modern [data-filter=freezer],.viki-modern .loc-freezer{--location-color:var(--freezer)}
+.viki-modern [data-filter=cupboard],.viki-modern .loc-cupboard{--location-color:var(--cupboard)}
+.viki-modern .filter-tab[data-filter]:not([data-filter=all]),.viki-modern .item-location{color:var(--location-color);border:1px solid color-mix(in srgb,var(--location-color) 55%,transparent);background:color-mix(in srgb,var(--location-color) 10%,var(--terminal-bg))}
+.viki-modern .filter-tab.active[data-filter]:not([data-filter=all]){background:var(--location-color);color:var(--terminal-bg);border-color:var(--location-color)}
+.viki-modern .inventory-item.location-fridge{border-left:3px solid var(--fridge)}
+.viki-modern .inventory-item.location-freezer{border-left:3px solid var(--freezer)}
+.viki-modern .inventory-item.location-cupboard{border-left:3px solid var(--cupboard)}
+.mobile-header-caption,.appearance-preview small,.command-guide summary{color:var(--secondary-accent)}
+.mobile-nav-button[aria-current=page] .mobile-nav-icon{color:var(--secondary-accent)}
+.viki-modern .message{font-size:calc(16px * var(--chat-scale,1))}
+.viki-modern .message p,.viki-modern .message.system,.viki-modern .command-guide{font-size:calc(16px * var(--chat-scale,1))}
+.viki-modern .message .command-guide-row p,.viki-modern .command-guide>p{font-size:.82em}
+.viki-modern .message .command-example{font-size:.85em}
+.viki-modern .message h2{font-size:1.1em}
+.palette-controls{margin:20px 0;padding-top:16px;border-top:1px solid var(--border-color)}
+.palette-controls h3{font-size:1rem}.palette-controls .appearance-field{margin:12px 0}

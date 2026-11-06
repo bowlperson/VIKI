@@ -7,8 +7,9 @@
         violet: {accent:'#c7a0ff', background:'#100d1a', text:'#f1eafa', secondary:'#72dfdf'},
         amber: {accent:'#ffc46e', background:'#17110b', text:'#f5ecd9', secondary:'#90dfb0'}
     };
+    const LOCATIONS={mint:{fridge:'#5ce8bf',freezer:'#79bbff',cupboard:'#edbe76'},violet:{fridge:'#80e0ca',freezer:'#b8adff',cupboard:'#efb38c'},amber:{fridge:'#b9dc9b',freezer:'#99c9e8',cupboard:'#ffc46e'},custom:{fridge:'#5ce8bf',freezer:'#79bbff',cupboard:'#edbe76'}};
     const FONTS = {system:'system-ui, -apple-system, sans-serif', mono:'ui-monospace, "Cascadia Code", "DejaVu Sans Mono", monospace', serif:'Georgia, "Noto Serif", serif', readable:'Verdana, "DejaVu Sans", sans-serif'};
-    const DEFAULTS = {theme:'mint', accent:'#5ce8bf', background:'#091311', text:'#e2eeea', font:'system', scale:1, reducedMotion:false, fullscreen:true};
+    const DEFAULTS = {theme:'mint', accent:'#5ce8bf', background:'#091311', text:'#e2eeea', font:'system', scale:1, chatScale:1, mono:false, paletteOverrides:{}, reducedMotion:false, fullscreen:true};
     let initialized = false, previousView = 'chat', activeCategory = 'appearance';
     const $ = id => document.getElementById(id);
     function readAppearance() {
@@ -29,18 +30,24 @@
         const style=document.documentElement.style;
         // Custom colors remain readable even when an imported preference has low contrast.
         const text = contrast(theme.text,theme.background)>=4.5 ? theme.text : (luminance(theme.background)>.18?'#111111':'#f5f8f7');
-        const accent = contrast(theme.accent,theme.background)>=3 ? theme.accent : text;
+        const overrides=appearance.paletteOverrides?.[appearance.theme]||{};
+        const primary=color(overrides.primary,theme.accent);
+        const accent = contrast(primary,theme.background)>=3 ? primary : text;
+        const secondary=color(overrides.secondary,theme.secondary);
+        style.setProperty('--secondary-accent',appearance.mono?accent:(contrast(secondary,theme.background)>=3?secondary:text));
+        for(const location of ['fridge','freezer','cupboard']){const chosen=color(overrides[location],(LOCATIONS[appearance.theme]||LOCATIONS.mint)[location]);style.setProperty('--'+location,contrast(chosen,theme.background)>=3?chosen:text);}
         style.setProperty('--terminal-bg',theme.background);style.setProperty('--terminal-fg',text);
-        style.setProperty('--accent-cyan',accent);style.setProperty('--accent-amber',contrast(theme.secondary,theme.background)>=3?theme.secondary:accent);
+        style.setProperty('--accent-cyan',accent);style.setProperty('--accent-amber',appearance.mono?accent:(contrast(secondary,theme.background)>=3?secondary:text));
         style.setProperty('--app-font',FONTS[appearance.font] || FONTS.system);
-        style.setProperty('--app-scale',Math.min(1.35,Math.max(.9,Number(appearance.scale)||1)));
+        style.setProperty('--app-scale',Math.min(1.6,Math.max(.65,Number(appearance.scale)||1)));
+        style.setProperty('--chat-scale',Math.min(1.8,Math.max(.65,Number(appearance.chatScale)||1)));
         style.setProperty('--accent-dim',text);style.setProperty('--border-color',`color-mix(in srgb, ${text} 15%, transparent)`);
         document.body.classList.toggle('reduced-motion',Boolean(appearance.reducedMotion));
         document.documentElement.dataset.theme=appearance.theme;
         document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme.background);
         if(root.VikiNative?.setFullscreen) root.VikiNative.setFullscreen(Boolean(appearance.fullscreen));
         const status=$('appearanceStatus');
-        if(status) status.textContent=appearance.theme==='custom' && (text!==theme.text||accent!==theme.accent)?'Theme saved. Low-contrast colors were adjusted for readability.':'Saved on this device. Changes apply immediately.';
+        if(status) status.textContent=(text!==theme.text||accent!==primary)?'Theme saved. Low-contrast colors were adjusted for readability.':'Saved on this device. Changes apply immediately.';
     }
     function saveAppearance() { localStorage.setItem(KEY,JSON.stringify(appearance));applyAppearance(); }
     function node(tag,cls,text) { const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e; }
@@ -64,9 +71,18 @@
         const select=node('select','config-select');select.id='appearanceFont';
         for(const [key,label] of [['system','System • clean'],['mono','Terminal • monospace'],['readable','Readable • wide letters'],['serif','Book • serif']]) { const option=node('option','',label);option.value=key;select.append(option); }
         select.value=appearance.font;select.onchange=()=>{appearance.font=select.value;saveAppearance();};section.append(inputRow('Text font',select));
-        const size=node('input','config-input');size.id='appearanceScale';size.type='range';size.min='.9';size.max='1.35';size.step='.05';size.value=String(appearance.scale);
-        const sizeLabel=node('output','appearance-size-value',`${Math.round(appearance.scale*100)}%`);sizeLabel.htmlFor=size.id;
-        size.oninput=()=>{appearance.scale=Number(size.value);sizeLabel.textContent=`${Math.round(appearance.scale*100)}%`;saveAppearance();};const sizeRow=inputRow('Text size',size);sizeRow.append(sizeLabel);section.append(sizeRow);
+        for(const [key,id,label,max] of [['scale','appearanceScale','General text size',1.6],['chatScale','chatScale','VIKI chat text size',1.8]]){
+            const size=node('input','config-input');size.id=id;size.type='range';size.min='.65';size.max=String(max);size.step='.05';size.value=String(appearance[key]||1);
+            const output=node('output','appearance-size-value',`${Math.round((appearance[key]||1)*100)}%`);output.htmlFor=id;
+            size.oninput=()=>{appearance[key]=Number(size.value);output.textContent=`${Math.round(appearance[key]*100)}%`;saveAppearance();};const row=inputRow(label,size);row.append(output);section.append(row);
+        }
+        const palette=node('div','palette-controls');palette.append(node('h3','','Theme accents & location colors'),node('p','config-help','Location chips and tags share these colors. Overrides are saved separately for each theme. Low-contrast colors are adjusted for readability.'));
+        for(const [key,label] of [['primary','Main accent'],['secondary','Secondary accent'],['fridge','Fridge'],['freezer','Freezer'],['cupboard','Cupboard']]){
+            const input=node('input');input.type='color';input.id='palette-'+key;
+            input.oninput=()=>{appearance.paletteOverrides ||= {};appearance.paletteOverrides[appearance.theme] ||= {};appearance.paletteOverrides[appearance.theme][key]=input.value;saveAppearance();};palette.append(inputRow(label,input));
+        }
+        const mono=node('input');mono.type='checkbox';mono.id='monoAccent';mono.checked=Boolean(appearance.mono);mono.onchange=()=>{appearance.mono=mono.checked;saveAppearance();};palette.append(inputRow('Mono accents (keep location colors)',mono));
+        const reset=node('button','config-button','Reset this theme’s accent and tag colors');reset.type='button';reset.onclick=()=>{if(appearance.paletteOverrides)delete appearance.paletteOverrides[appearance.theme];saveAppearance();updateThemeControls();};palette.append(reset);section.append(palette);
         for(const [key,label,help] of [['reducedMotion','Reduce motion','Disable decorative animation and transitions.'],['fullscreen','Fullscreen & auto-hide system bars',root.VikiNative?'Swipe from the screen edge to reveal Android system bars.':'On Android, status and navigation bars hide automatically. Browser fullscreen needs a tap.']]) {
             const row=node('label','appearance-toggle');const input=node('input');input.type='checkbox';input.id=key==='fullscreen'?'fullscreenEnabled':'reduceMotion';input.checked=Boolean(appearance[key]);
             input.onchange=()=>{appearance[key]=input.checked;saveAppearance();};const copy=node('span');copy.append(node('span','',label),node('small','',help));row.append(input,copy);section.append(row);
@@ -78,6 +94,8 @@
     }
     function updateThemeControls() {
         document.querySelectorAll('.theme-option').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.theme===appearance.theme)));
+        const overrides=appearance.paletteOverrides?.[appearance.theme]||{},theme=THEMES[appearance.theme]||appearance;
+        for(const key of ['primary','secondary','fridge','freezer','cupboard']){const input=$('palette-'+key);if(input)input.value=color(overrides[key],key==='primary'?theme.accent:key==='secondary'?(theme.secondary||appearance.accent):(LOCATIONS[appearance.theme]||LOCATIONS.mint)[key]);}
         $('customThemeColors').hidden=appearance.theme!=='custom';
     }
     function classify(section) {
