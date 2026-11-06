@@ -2,6 +2,10 @@
 
 VIKI (Virtual Inventory Keeper Intelligence) is a browser-based household inventory assistant for tracking nutritional assets, degradation timelines, locations, and quantities.
 
+## Beta 0.4.1 polish
+
+Fullscreen now uses the hidden status-bar area, leaving one physical pixel above the viewport; visible system bars still receive safe insets. Pixel hardware verification remains required. The persistent Critical banner is replaced by a compact warning count next to VIKI. Cash uses a theme-aware digital display box. Item earnings keep their floating amount and sound but no coins/particles; game wins retain those effects. Notifications includes a Cash Games shortcut beside Export. Ten rapid VIKI taps show **Anna & Abel 's System** for ten seconds.
+
 ## Beta 0.4.0
 
 The downloadable package is now `downloads/viki-beta.apk`, version **0.4.0-beta**, signed with the existing development certificate for in-place upgrades. Beta naming does not establish physical-device validation or a production signing process.

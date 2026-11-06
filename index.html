@@ -1175,13 +1175,9 @@
     <link rel="stylesheet" href="mobile-ui.css">
 </head>
 <body>
-    <div class="alert-banner" id="expiringAlert">
-        CRITICAL: Nutritional assets approaching degradation threshold
-    </div>
-
     <div class="header">
         <div class="header-left">
-            <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button>
+            <div class="header-brand-row">            <button type="button" class="logo" id="vikiLogo" aria-controls="registrySidebar" aria-expanded="true" aria-label="Hide asset and reminder registry" title="Show or hide the registry on mobile">VIKI</button><span id="expiringCount" class="expiry-count" role="status" hidden></span></div>
             <div class="subtitle"><span class="subtitle-designation subtitle-designation--desktop">VIRTUAL INVENTORY KEEPER INTELLIGENCE v2.0.0 // </span><button type="button" class="operators-easter-egg" id="operatorsEasterEgg" aria-label="Abel and Anna's" title="Abel &amp; Anna's">ABEL &amp; ANNA'S</button><span> SYSTEM</span><button type="button" class="money-indicator" id="moneyIndicator" aria-label="Open slot machine. Cash balance: $0">$0</button></div>
         </div>
         <div class="system-status">
@@ -1199,6 +1195,7 @@
             <div class="sidebar-header">
                 <button type="button" class="sidebar-title registry-title-button" id="registryTitleButton" aria-label="Switch to notification history" title="Switch between assets and reminders">ASSET_REGISTRY</button>
                 <div class="registry-actions">
+                    <button type="button" class="config-button" id="notificationGamesButton" hidden>CASH GAMES</button>
                     <div class="item-count" id="itemCount">0 assets</div>
                     <button type="button" class="config-button" id="registryLockButton" aria-pressed="false" title="Unlock manual registry editing">🔒</button>
                     <button type="button" class="config-button registry-edit-action" id="saveRegistryButton">SAVE</button>
@@ -1966,14 +1963,14 @@
             startRewardParticles();
         }
 
-        function showCashReward(amount, jackpot = false) {
+        function showCashReward(amount, jackpot = false, gameWin = false) {
             const float = document.createElement('div');
             float.className = `reward-float${jackpot ? ' jackpot' : ''}`;
             float.textContent = `+$${Number(amount).toLocaleString('en-US')}${jackpot ? ' JACKPOT' : ''}`;
             document.body.appendChild(float);
             float.addEventListener('animationend', () => float.remove(), { once: true });
             if (jackpot) playJackpotSound(); else playInventoryAddSound();
-            spawnRewardParticles(jackpot);
+            if(gameWin)spawnRewardParticles(jackpot);
         }
 
         function getActiveCashProfile() {
@@ -2112,7 +2109,7 @@
             profile.slotLuck = jackpot ? 0 : Math.min(39, (Number(profile.slotLuck) || 0) + 1);
             if (winnings) {
                 profile.balance += winnings;
-                showCashReward(winnings, jackpot);
+                showCashReward(winnings, jackpot, true);
                 celebrateSlotWin(results, match[0], jackpot);
             }
             databaseState.cashProfiles = cashProfiles;
@@ -2343,14 +2340,14 @@
             if (bonus1024) {
                 profile.balance += bonus1024;
                 setMoneyIndicator(profile.balance);
-                showCashReward(bonus1024);
+                showCashReward(bonus1024, false, true);
             }
             const newlyWon = GAME_2048_PRIZES.filter(tier => game.score >= tier.score && !game.claimed.includes(tier.score));
             if (newlyWon.length) {
                 const prize = newlyWon.reduce((sum, tier) => sum + tier.prize, 0);
                 newlyWon.forEach(tier => game.claimed.push(tier.score));
                 game.totalPrizes += prize; profile.balance += prize;
-                setMoneyIndicator(profile.balance); showCashReward(prize);
+                setMoneyIndicator(profile.balance); showCashReward(prize, false, true);
             }
             databaseState.cashProfiles = cashProfiles; queueLocalSave(); render2048();
             return true;
@@ -3209,9 +3206,10 @@
 
         function checkExpiringItems() {
             const expiring = getExpiringItems().filter(i => i.daysLeft <= 3 && i.daysLeft > 0);
-            const alert = document.getElementById('expiringAlert');
-            alert.textContent = `CRITICAL: ${expiring.length} nutritional asset(s) approaching degradation threshold`;
-            alert.classList.toggle('show', expiring.length > 0);
+            const badge = document.getElementById('expiringCount');
+            badge.textContent = `⚠︎ ${expiring.length} ${expiring.length === 1 ? 'item' : 'items'}`;
+            badge.setAttribute('aria-label',`${expiring.length} items approaching their shelf-life limit`);
+            badge.hidden = expiring.length === 0;
             checkDegradationEmailNotifications().catch(error => addMessage(`Email alert failed: ${error.message}`, 'error'));
         }
 
@@ -3537,6 +3535,7 @@
             registryView = view === 'reminders' ? 'reminders' : 'assets';
             if (registryEditMode) setRegistryEditMode(false);
             const reminders = registryView === 'reminders';
+            document.getElementById('notificationGamesButton').hidden=!reminders;
             const title = document.getElementById('registryTitleButton');
             title.textContent = reminders ? 'NOTIFICATIONS' : 'ASSET_REGISTRY';
             title.setAttribute('aria-label', reminders ? 'Switch to asset registry' : 'Switch to notification history');
@@ -5241,6 +5240,7 @@
         document.getElementById('cashProfileSelect').addEventListener('change', previewCashProfile);
         document.getElementById('saveCashProfileButton').addEventListener('click', saveCashProfile);
         document.getElementById('saveSpeechSettingsButton').addEventListener('click', saveSpeechSettings);
+        document.getElementById('notificationGamesButton').addEventListener('click',openSlotMachine);
         document.getElementById('moneyIndicator').addEventListener('click', openSlotMachine);
         document.getElementById('openSlotMachineButton').addEventListener('click', openSlotMachine);
         document.getElementById('closeSlotMachineButton').addEventListener('click', closeSlotMachine);

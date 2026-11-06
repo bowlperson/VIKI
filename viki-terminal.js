@@ -23,8 +23,8 @@ function render(message,text,type){
 }
 let taps=0,tapTimer,titleTimer;
 function init(){const logo=document.getElementById('vikiLogo');document.addEventListener('click',event=>{if(!logo.contains(event.target))return;
- clearTimeout(tapTimer);if(++taps<4){tapTimer=setTimeout(()=>taps=0,1500);return;}taps=0;
- logo.dataset.celebrating='true';logo.textContent='Anna + Abel';clearTimeout(titleTimer);titleTimer=setTimeout(()=>{logo.textContent='VIKI';delete logo.dataset.celebrating;},10000);
+ clearTimeout(tapTimer);if(++taps<10){tapTimer=setTimeout(()=>taps=0,1500);return;}taps=0;
+ logo.dataset.celebrating='true';logo.textContent="Anna & Abel 's System";clearTimeout(titleTimer);titleTimer=setTimeout(()=>{logo.textContent='VIKI';delete logo.dataset.celebrating;},10000);
  const palette=['--accent-cyan','--secondary-accent','--fridge','--freezer','--cupboard','--terminal-fg'].map(k=>getComputedStyle(document.documentElement).getPropertyValue(k));
  if(root.VikiMobile?.appearance().reducedMotion)return;
  const r=logo.getBoundingClientRect();for(let i=0;i<48;i++){const dot=document.createElement('i');dot.className='terminal-particle';dot.style.background=palette[i%palette.length];dot.style.left=`${r.left+r.width/2}px`;dot.style.top=`${r.top+r.height/2}px`;document.body.append(dot);const angle=i*Math.PI*2/48,distance=50+Math.random()*150;const animation=dot.animate([{transform:'translate(0,0)',opacity:1},{transform:`translate(${Math.cos(angle)*distance}px,${Math.sin(angle)*distance}px) rotate(180deg)`,opacity:0}],{duration:900,easing:'ease-out'});animation.onfinish=()=>dot.remove();}

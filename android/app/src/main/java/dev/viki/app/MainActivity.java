@@ -47,6 +47,7 @@ public final class MainActivity extends Activity {
         frame.addView(web,new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,FrameLayout.LayoutParams.MATCH_PARENT));
         setContentView(frame);
         if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
+        if(Build.VERSION.SDK_INT>=28){android.view.WindowManager.LayoutParams attributes=getWindow().getAttributes();attributes.layoutInDisplayCutoutMode=android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;getWindow().setAttributes(attributes);}
         // WebView padding does not protect fixed-position HTML from edge-to-edge bars.
         // Native margins shrink the actual web viewport, including its fixed Settings header.
         frame.setOnApplyWindowInsetsListener((view,insets)->{
@@ -73,6 +74,9 @@ public final class MainActivity extends Activity {
                     bottom=Math.max(bottom,insets.getDisplayCutout().getSafeInsetBottom());
                 }
             }
+            boolean statusVisible=Build.VERSION.SDK_INT>=30?insets.isVisible(WindowInsets.Type.statusBars()):(getWindow().getDecorView().getSystemUiVisibility()&View.SYSTEM_UI_FLAG_FULLSCREEN)==0;
+            // Insets are physical pixels here. Reserve exactly one pixel only while the status bar is hidden.
+            if(fullscreen()&&!statusVisible)top=1;
             FrameLayout.LayoutParams layout=(FrameLayout.LayoutParams)web.getLayoutParams();
             if(layout.leftMargin!=left||layout.topMargin!=top||layout.rightMargin!=right||layout.bottomMargin!=bottom){
                 layout.setMargins(left,top,right,bottom);web.setLayoutParams(layout);
