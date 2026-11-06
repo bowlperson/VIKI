@@ -1195,7 +1195,6 @@
             <div class="sidebar-header">
                 <button type="button" class="sidebar-title registry-title-button" id="registryTitleButton" aria-label="Switch to notification history" title="Switch between assets and reminders">ASSET_REGISTRY</button>
                 <div class="registry-actions">
-                    <button type="button" class="config-button" id="notificationGamesButton" hidden>CASH GAMES</button>
                     <div class="item-count" id="itemCount">0 assets</div>
                     <button type="button" class="config-button" id="registryLockButton" aria-pressed="false" title="Unlock manual registry editing">🔒</button>
                     <button type="button" class="config-button registry-edit-action" id="saveRegistryButton">SAVE</button>
@@ -3535,7 +3534,6 @@
             registryView = view === 'reminders' ? 'reminders' : 'assets';
             if (registryEditMode) setRegistryEditMode(false);
             const reminders = registryView === 'reminders';
-            document.getElementById('notificationGamesButton').hidden=!reminders;
             const title = document.getElementById('registryTitleButton');
             title.textContent = reminders ? 'NOTIFICATIONS' : 'ASSET_REGISTRY';
             title.setAttribute('aria-label', reminders ? 'Switch to asset registry' : 'Switch to notification history');
@@ -5240,7 +5238,6 @@
         document.getElementById('cashProfileSelect').addEventListener('change', previewCashProfile);
         document.getElementById('saveCashProfileButton').addEventListener('click', saveCashProfile);
         document.getElementById('saveSpeechSettingsButton').addEventListener('click', saveSpeechSettings);
-        document.getElementById('notificationGamesButton').addEventListener('click',openSlotMachine);
         document.getElementById('moneyIndicator').addEventListener('click', openSlotMachine);
         document.getElementById('openSlotMachineButton').addEventListener('click', openSlotMachine);
         document.getElementById('closeSlotMachineButton').addEventListener('click', closeSlotMachine);

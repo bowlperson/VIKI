@@ -17,13 +17,15 @@ const server=http.createServer((req,res)=>{let file=path.resolve(root,'.'+(req.u
  await page.locator('#typeSpeed').fill('10');await page.locator('#typeSpeed').dispatchEvent('input');await page.locator('#saveAppearanceButton').click();
  await page.evaluate(()=>VikiMobile.selectView('chat'));
  await page.evaluate(()=>addMessage('Terminal typing test '.repeat(15),'assistant'));const latest=page.locator('#chatArea > .message').last();assert.ok(await latest.locator('.terminal-block-cursor').isVisible());await latest.locator('.terminal-skip').click();assert.equal(await latest.locator('.terminal-message-body').innerText(),'Terminal typing test '.repeat(15));
+ const normalTitleSize=await page.locator('#vikiLogo').evaluate(el=>parseFloat(getComputedStyle(el).fontSize));
  await page.locator('#vikiLogo').click({clickCount:10});await page.waitForFunction(()=>document.getElementById('vikiLogo').textContent==="Anna & Abel 's System");
+ assert.equal(await page.locator('#vikiLogo').evaluate(el=>parseFloat(getComputedStyle(el).fontSize)),normalTitleSize/2,'easter egg title uses half the regular title font size');
  await page.evaluate(()=>{setMoneyIndicator(1234);});
  await page.evaluate(()=>{databaseState.inventory=[{id:'badge',name:'milk',quantity:1,location:'fridge',category:'dairy',shelfLife:3,addedDate:new Date(Date.now()-86400000).toISOString()}];checkExpiringItems();});
  assert.equal(await page.locator('#expiringAlert').count(),0);assert.equal(await page.locator('#expiringCount').innerText(),'⚠︎ 1 item');
  await page.evaluate(()=>{rewardParticles=[];showCashReward(250);});assert.equal(await page.evaluate(()=>rewardParticles.length),0,'item rewards are float and sound only');
  await page.evaluate(()=>showCashReward(500,false,true));assert.ok(await page.evaluate(()=>rewardParticles.length)>0,'game wins retain particles');
- await page.evaluate(()=>VikiMobile.selectView('reminders'));assert.ok(await page.locator('#notificationGamesButton').isVisible());
+ await page.evaluate(()=>VikiMobile.selectView('reminders'));assert.equal(await page.locator('#notificationGamesButton').count(),0);assert.ok(await page.locator('#exportRegistryButton').isVisible());
 assert.match(await page.locator('.header-cash-balance').innerText(),/1,234/);
  await page.evaluate(()=>VikiMobile.selectView('settings'));await page.locator('.theme-option[data-theme="red"]').click();
  page.removeAllListeners('dialog');page.on('dialog',d=>d.dismiss());await page.evaluate(()=>VikiMobile.selectView('chat'));assert.equal(await page.evaluate(()=>VikiMobile.appearance().theme),'custom','rejecting exit confirmation restores committed appearance');
